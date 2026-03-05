@@ -1,0 +1,165 @@
+════════════════════════════════════════════════════════════════════════
+  WEBGATE — DOMAIN SECURITY AUDIT REPORT
+  Created by c3less  │  webgate v1.0.0
+────────────────────────────────────────────────────────────────────────
+  Target    : reallyworld.ru
+  Date/Time : 2026-03-04 23:52:50
+  Duration  : 26.2s
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────
+  1. DNS RESOLUTION
+────────────────────────────────────────────────────────────────────────
+  IPv4 Address  : 104.26.6.68
+  IPv4 Address  : 172.67.68.113
+  IPv4 Address  : 104.26.7.68
+  Reverse DNS   : N/A
+
+────────────────────────────────────────────────────────────────────────
+  2. DNS RECORDS
+────────────────────────────────────────────────────────────────────────
+  A        : 172.67.68.113
+  A        : 104.26.6.68
+  A        : 104.26.7.68
+  MX       : 10 mx.reallyworld.ru.
+  NS       : dina.ns.cloudflare.com.
+  NS       : oswald.ns.cloudflare.com.
+  TXT      : "a2300e14ace74e90d93319f34d4a60"
+  TXT      : "enot=60044065"
+  TXT      : "fk-verify=0302c4893bef241c7bbb971b35b7f18c"
+  TXT      : "google-site-verification=UJeiOHqr1aX1_utpKqfFblgt3_AX7K4MG4L4
+  TXT      : "tcpshield-network-verification=MRDNF5EFD2GEITJ4DH4O4DRSPUH2WM
+  TXT      : "v=spf1 include:_spf.mx.realyworld.ru ~all"
+  TXT      : "yandex-verification: ee2c477fec84c989"
+  SOA      : dina.ns.cloudflare.com. dns.cloudflare.com. 2396896850 10000 2
+
+────────────────────────────────────────────────────────────────────────
+  3. WHOIS INFORMATION
+────────────────────────────────────────────────────────────────────────
+  Registrar           : REGRU-RU
+  Creation Date       : 2017-02-26 17:04:46+00:00
+  Expiration Date     : 2027-02-26 17:04:46+00:00
+  Name Servers        : dina.ns.cloudflare.com.
+  Status              : REGISTERED, DELEGATED, VERIFIED
+
+────────────────────────────────────────────────────────────────────────
+  4. HTTP ANALYSIS
+────────────────────────────────────────────────────────────────────────
+  Status Code   : 403
+  Protocol      : HTTPS
+  Server        : cloudflare
+  HTTPS Redir   : No
+  Technology    : Server: cloudflare
+  Sec Hdr Score : 0/7
+
+  Security Header Audit:
+    ✗  Strict-Transport-Security
+    ✗  Content-Security-Policy
+    ✗  X-Frame-Options
+    ✗  X-Content-Type-Options
+    ✗  X-XSS-Protection
+    ✗  Referrer-Policy
+    ✗  Permissions-Policy
+
+────────────────────────────────────────────────────────────────────────
+  5. SSL/TLS CERTIFICATE
+────────────────────────────────────────────────────────────────────────
+  TLS Version       : TLSv1.3
+  Cipher Suite      : TLS_AES_256_GCM_SHA384
+  Key Bits          : 256
+  Common Name       : reallyworld.ru
+  Issuer            : Google Trust Services
+  Valid From        : Jan 12 20:13:43 2026 GMT
+  Valid Until       : Apr 12 21:13:31 2026 GMT
+  Days Remaining    : 38
+  Wildcard Cert : No
+  Self-Signed   : No
+  SAN Count     : 2
+
+────────────────────────────────────────────────────────────────────────
+  6. PORT SCAN
+────────────────────────────────────────────────────────────────────────
+  Target IP     : 104.26.7.68
+
+  PORT     STATE      SERVICE          BANNER
+  ──────── ────────── ──────────────── ────────────────────────
+  80       OPEN       HTTP             HTTP/1.1 301 Moved Perma
+  443      OPEN       HTTPS            
+  8080     OPEN       HTTP-Alt         HTTP/1.1 301 Moved Perma
+  8443     OPEN       HTTPS-Alt        
+
+────────────────────────────────────────────────────────────────────────
+  7. RISK SUMMARY
+────────────────────────────────────────────────────────────────────────
+  [HIGH    ] Very poor security headers (0/7)
+  [MEDIUM  ] HTTP to HTTPS redirect not enforced
+
+────────────────────────────────────────────────────────────────────────
+  8. DETAILED SCAN LOG
+────────────────────────────────────────────────────────────────────────
+  [23:52:24] Starting security audit: reallyworld.ru
+  [23:52:24] ────────────────────────────────────────────────────
+  [23:52:24] Resolving domain to IP address...
+  [23:52:24]   IPv4 Address    : 104.26.6.68
+  [23:52:24]   IPv4 Address    : 172.67.68.113
+  [23:52:24]   IPv4 Address    : 104.26.7.68
+  [23:52:24]   Reverse DNS     : not available
+  [23:52:24]   Resolved 3 address(es)
+  [23:52:24] Checking DNS records (A, AAAA, MX, NS, TXT, CNAME, SOA)...
+  [23:52:25]   A               : 172.67.68.113
+  [23:52:25]   A               : 104.26.6.68
+  [23:52:25]   A               : 104.26.7.68
+  [23:52:25]   MX              : 10 mx.reallyworld.ru.
+  [23:52:25]   NS              : dina.ns.cloudflare.com.
+  [23:52:25]   NS              : oswald.ns.cloudflare.com.
+  [23:52:25]   TXT             : "a2300e14ace74e90d93319f34d4a60"
+  [23:52:25]   TXT             : "enot=60044065"
+  [23:52:25]   TXT             : "fk-verify=0302c4893bef241c7bbb971b35b7f18c"
+  [23:52:25]   TXT             : "google-site-verification=UJeiOHqr1aX1_utpKqfFblgt3_AX7K4MG4L44YuJwlc"
+  [23:52:25]   TXT             : "tcpshield-network-verification=MRDNF5EFD2GEITJ4DH4O4DRSPUH2WMJMFZNAFD5ST3
+  [23:52:25]   TXT             : "v=spf1 include:_spf.mx.realyworld.ru ~all"
+  [23:52:25]   TXT             : "yandex-verification: ee2c477fec84c989"
+  [23:52:25]   SOA             : dina.ns.cloudflare.com. dns.cloudflare.com. 2396896850 10000 2400 604800 1
+  [23:52:25] Retrieving WHOIS information...
+  [23:52:26]   Registrar          : REGRU-RU
+  [23:52:26]   Registered         : 2017-02-26 17:04:46+00:00
+  [23:52:26]   Expires            : 2027-02-26 17:04:46+00:00
+  [23:52:26]   Name Servers       : dina.ns.cloudflare.com.
+  [23:52:26]   Domain Status      : REGISTERED, DELEGATED, VERIFIED
+  [23:52:26]   WHOIS lookup failed: can't subtract offset-naive and offset-aware datetimes
+  [23:52:26] Analyzing HTTP headers and security posture...
+  [23:52:27]   Status          : 403 (HTTPS)
+  [23:52:27]   Server           : cloudflare
+  [23:52:27]   Security headers audit:
+  [23:52:27]     ✗ Strict-Transport-Security
+  [23:52:27]     ✗ Content-Security-Policy
+  [23:52:27]     ✗ X-Frame-Options
+  [23:52:27]     ✗ X-Content-Type-Options
+  [23:52:27]     ✗ X-XSS-Protection
+  [23:52:27]     ✗ Referrer-Policy
+  [23:52:27]     ✗ Permissions-Policy
+  [23:52:27]   Security score  : 0/7
+  [23:52:27] Checking SSL/TLS certificate...
+  [23:52:28]   TLS version     : TLSv1.3
+  [23:52:28]   Cipher suite    : TLS_AES_256_GCM_SHA384 (256 bits)
+  [23:52:28]   Common name     : reallyworld.ru
+  [23:52:28]   Issuer          : Google Trust Services [US]
+  [23:52:28]   Valid from      : Jan 12 20:13:43 2026 GMT
+  [23:52:28]   Valid until     : Apr 12 21:13:31 2026 GMT
+  [23:52:28]   Days remaining  : 38 days
+  [23:52:28]   Alt names (SAN) : 2 entries
+  [23:52:28]     · reallyworld.ru
+  [23:52:28]     · *.reallyworld.ru
+  [23:52:28] Scanning common ports...
+  [23:52:33]      80/tcp  OPEN    HTTP            [HTTP/1.1 301 Moved Permanent]
+  [23:52:37]     443/tcp  OPEN    HTTPS         
+  [23:52:47]    8080/tcp  OPEN    HTTP-Alt        [HTTP/1.1 301 Moved Permanent]
+  [23:52:48]    8443/tcp  OPEN    HTTPS-Alt     
+  [23:52:50]   Open ports      : 4
+  [23:52:50]   Closed          : 17
+  [23:52:50]   Filtered        : 0
+  [23:52:50] Generating comprehensive security report...
+
+════════════════════════════════════════════════════════════════════════
+  END OF REPORT — webgate by c3less
+════════════════════════════════════════════════════════════════════════

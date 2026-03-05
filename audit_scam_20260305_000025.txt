@@ -1,0 +1,93 @@
+════════════════════════════════════════════════════════════════════════
+  WEBGATE — DOMAIN SECURITY AUDIT REPORT
+  Created by c3less  │  webgate v1.0.0
+────────────────────────────────────────────────────────────────────────
+  Target    : scam
+  Date/Time : 2026-03-05 00:00:25
+  Duration  : 3.3s
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────
+  1. DNS RESOLUTION
+────────────────────────────────────────────────────────────────────────
+  Reverse DNS   : N/A
+
+────────────────────────────────────────────────────────────────────────
+  2. DNS RECORDS
+────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────
+  3. WHOIS INFORMATION
+────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────
+  4. HTTP ANALYSIS
+────────────────────────────────────────────────────────────────────────
+  Status Code   : None
+  Protocol      : None
+  Server        : None
+  HTTPS Redir   : No
+  Sec Hdr Score : 0/7
+
+  Security Header Audit:
+    ✗  Strict-Transport-Security
+    ✗  Content-Security-Policy
+    ✗  X-Frame-Options
+    ✗  X-Content-Type-Options
+    ✗  X-XSS-Protection
+    ✗  Referrer-Policy
+    ✗  Permissions-Policy
+
+────────────────────────────────────────────────────────────────────────
+  5. SSL/TLS CERTIFICATE
+────────────────────────────────────────────────────────────────────────
+  SSL not available: [Errno -2] Name or service not known
+
+────────────────────────────────────────────────────────────────────────
+  6. PORT SCAN
+────────────────────────────────────────────────────────────────────────
+  Target IP     : scam
+
+  No open ports detected in common port list
+
+────────────────────────────────────────────────────────────────────────
+  7. RISK SUMMARY
+────────────────────────────────────────────────────────────────────────
+  [HIGH    ] No HTTPS/SSL on port 443
+  [HIGH    ] Very poor security headers (0/7)
+  [MEDIUM  ] HTTP to HTTPS redirect not enforced
+
+────────────────────────────────────────────────────────────────────────
+  8. DETAILED SCAN LOG
+────────────────────────────────────────────────────────────────────────
+  [00:00:22] Starting security audit: scam
+  [00:00:22] ────────────────────────────────────────────────────
+  [00:00:22] Resolving domain to IP address...
+  [00:00:22]   Cannot resolve 'scam': [Errno -2] Name or service not known
+  [00:00:22] Checking DNS records (A, AAAA, MX, NS, TXT, CNAME, SOA)...
+  [00:00:22]   NXDOMAIN — domain does not exist in DNS
+  [00:00:22] Retrieving WHOIS information...
+  [00:00:22]   WHOIS lookup failed: Whois command returned no output
+  [00:00:22] Analyzing HTTP headers and security posture...
+  [00:00:22]   HTTPS failed  : <urlopen error [Errno -2] Name or service not known>
+  [00:00:22]   HTTP failed  : <urlopen error [Errno -2] Name or service not known>
+  [00:00:22]   Security headers audit:
+  [00:00:22]     ✗ Strict-Transport-Security
+  [00:00:22]     ✗ Content-Security-Policy
+  [00:00:22]     ✗ X-Frame-Options
+  [00:00:22]     ✗ X-Content-Type-Options
+  [00:00:22]     ✗ X-XSS-Protection
+  [00:00:22]     ✗ Referrer-Policy
+  [00:00:22]     ✗ Permissions-Policy
+  [00:00:22]   Security score  : 0/7
+  [00:00:22] Checking SSL/TLS certificate...
+  [00:00:22]   SSL check failed: [Errno -2] Name or service not known
+  [00:00:22] Scanning common ports...
+  [00:00:25]   Open ports      : 0
+  [00:00:25]   Closed          : 21
+  [00:00:25]   Filtered        : 0
+  [00:00:25] Generating comprehensive security report...
+
+════════════════════════════════════════════════════════════════════════
+  END OF REPORT — webgate by c3less
+════════════════════════════════════════════════════════════════════════

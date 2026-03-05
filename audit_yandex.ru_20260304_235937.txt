@@ -1,0 +1,177 @@
+════════════════════════════════════════════════════════════════════════
+  WEBGATE — DOMAIN SECURITY AUDIT REPORT
+  Created by c3less  │  webgate v1.0.0
+────────────────────────────────────────────────────────────────────────
+  Target    : yandex.ru
+  Date/Time : 2026-03-04 23:59:37
+  Duration  : 35.3s
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────
+  1. DNS RESOLUTION
+────────────────────────────────────────────────────────────────────────
+  IPv4 Address  : 77.88.44.55
+  IPv4 Address  : 77.88.55.88
+  IPv4 Address  : 5.255.255.77
+  IPv6 Address  : 2a02:6b8:a::a
+  Reverse DNS   : yandex.ru
+
+────────────────────────────────────────────────────────────────────────
+  2. DNS RECORDS
+────────────────────────────────────────────────────────────────────────
+  A        : 77.88.55.88
+  A        : 77.88.44.55
+  A        : 5.255.255.77
+  AAAA     : 2a02:6b8:a::a
+  MX       : 10 mx.yandex.ru.
+  NS       : ns2.yandex.ru.
+  NS       : ns1.yandex.ru.
+  TXT      : "MS=ms75457885"
+  TXT      : "v=spf1 redirect=_spf.yandex.ru"
+  TXT      : "mailru-verification: 530c425b1458283e"
+  TXT      : "facebook-domain-verification=e750ewnqm68u4f83wvp6qp7iiphkj0"
+  TXT      : "have-i-been-pwned-verification=13c7b50cd0b12f85dabe796e6178fb
+  TXT      : "google-site-verification=Xj1hw8lKZK7dkCP6SCfNi98SvjacNHoNCVrF
+  TXT      : "google-site-verification=bDiyjBjCnMbct5cB1XZXOj5gQ0YcatJqTZUx
+  TXT      : "_globalsign-domain-verification=FYNrZOjd0nwykdGaq5RScacoSImqU
+  SOA      : ns1.yandex.ru. sysadmin.yandex-team.ru. 2023037862 600 300 259
+
+────────────────────────────────────────────────────────────────────────
+  3. WHOIS INFORMATION
+────────────────────────────────────────────────────────────────────────
+  Registrar           : RU-CENTER-RU
+  Creation Date       : 1997-09-23 09:45:07+00:00
+  Expiration Date     : 2026-09-30 21:00:00+00:00
+  Name Servers        : ns1.yandex.ru. 213.180.193.1, 2a02:6b8::1
+  Org                 : YANDEX, LLC.
+  Status              : REGISTERED, DELEGATED, VERIFIED
+
+────────────────────────────────────────────────────────────────────────
+  4. HTTP ANALYSIS
+────────────────────────────────────────────────────────────────────────
+  Status Code   : 200
+  Protocol      : HTTPS
+  Server        : None
+  HTTPS Redir   : Yes
+  Sec Hdr Score : 5/7
+
+  Security Header Audit:
+    ✓  Strict-Transport-Security
+    ✓  Content-Security-Policy
+    ✗  X-Frame-Options
+    ✓  X-Content-Type-Options
+    ✓  X-XSS-Protection
+    ✓  Referrer-Policy
+    ✗  Permissions-Policy
+
+────────────────────────────────────────────────────────────────────────
+  5. SSL/TLS CERTIFICATE
+────────────────────────────────────────────────────────────────────────
+  TLS Version       : TLSv1.3
+  Cipher Suite      : TLS_AES_256_GCM_SHA384
+  Key Bits          : 256
+  Common Name       : *.yandex.tr
+  Issuer            : GlobalSign nv-sa
+  Valid From        : Feb  6 06:58:08 2026 GMT
+  Valid Until       : Aug  6 20:59:59 2026 GMT
+  Days Remaining    : 154
+  Wildcard Cert : Yes
+  Self-Signed   : No
+  SAN Count     : 52
+
+────────────────────────────────────────────────────────────────────────
+  6. PORT SCAN
+────────────────────────────────────────────────────────────────────────
+  Target IP     : 5.255.255.77
+
+  PORT     STATE      SERVICE          BANNER
+  ──────── ────────── ──────────────── ────────────────────────
+  80       OPEN       HTTP             HTTP/1.1 301 Moved perma
+  443      OPEN       HTTPS            
+
+────────────────────────────────────────────────────────────────────────
+  7. RISK SUMMARY
+────────────────────────────────────────────────────────────────────────
+  [OK] No critical risks identified in this scan
+
+────────────────────────────────────────────────────────────────────────
+  8. DETAILED SCAN LOG
+────────────────────────────────────────────────────────────────────────
+  [23:59:01] Starting security audit: yandex.ru
+  [23:59:01] ────────────────────────────────────────────────────
+  [23:59:01] Resolving domain to IP address...
+  [23:59:01]   IPv4 Address    : 77.88.44.55
+  [23:59:01]   IPv4 Address    : 77.88.55.88
+  [23:59:01]   IPv4 Address    : 5.255.255.77
+  [23:59:01]   IPv6 Address    : 2a02:6b8:a::a
+  [23:59:02]   Reverse DNS     : yandex.ru
+  [23:59:02]   Resolved 4 address(es)
+  [23:59:02] Checking DNS records (A, AAAA, MX, NS, TXT, CNAME, SOA)...
+  [23:59:02]   A               : 77.88.55.88
+  [23:59:02]   A               : 77.88.44.55
+  [23:59:02]   A               : 5.255.255.77
+  [23:59:02]   AAAA            : 2a02:6b8:a::a
+  [23:59:02]   MX              : 10 mx.yandex.ru.
+  [23:59:02]   NS              : ns2.yandex.ru.
+  [23:59:02]   NS              : ns1.yandex.ru.
+  [23:59:03]   TXT             : "MS=ms75457885"
+  [23:59:03]   TXT             : "v=spf1 redirect=_spf.yandex.ru"
+  [23:59:03]   TXT             : "mailru-verification: 530c425b1458283e"
+  [23:59:03]   TXT             : "facebook-domain-verification=e750ewnqm68u4f83wvp6qp7iiphkj0"
+  [23:59:03]   TXT             : "have-i-been-pwned-verification=13c7b50cd0b12f85dabe796e6178fb74"
+  [23:59:03]   TXT             : "google-site-verification=Xj1hw8lKZK7dkCP6SCfNi98SvjacNHoNCVrFbJCZfio"
+  [23:59:03]   TXT             : "google-site-verification=bDiyjBjCnMbct5cB1XZXOj5gQ0YcatJqTZUxFBo55nE"
+  [23:59:03]   TXT             : "_globalsign-domain-verification=FYNrZOjd0nwykdGaq5RScacoSImqU9YxFXm4RjGTw
+  [23:59:03]   SOA             : ns1.yandex.ru. sysadmin.yandex-team.ru. 2023037862 600 300 2592000 900
+  [23:59:03] Retrieving WHOIS information...
+  [23:59:09]   Registrar          : RU-CENTER-RU
+  [23:59:09]   Registered         : 1997-09-23 09:45:07+00:00
+  [23:59:09]   Expires            : 2026-09-30 21:00:00+00:00
+  [23:59:09]   Name Servers       : ns1.yandex.ru. 213.180.193.1, 2a02:6b8::1
+  [23:59:09]   Organization       : YANDEX, LLC.
+  [23:59:09]   Domain Status      : REGISTERED, DELEGATED, VERIFIED
+  [23:59:09]   WHOIS lookup failed: can't subtract offset-naive and offset-aware datetimes
+  [23:59:09] Analyzing HTTP headers and security posture...
+  [23:59:12]   Status          : 200 (HTTPS)
+  [23:59:12]   Redirects to    : https://sso.passport.yandex.ru/push?uuid=1186fa27-1c55-4c57-a416-a4350
+  [23:59:12]   HTTPS redirect  : enforced ✓
+  [23:59:12]   Security headers audit:
+  [23:59:12]     ✓ Strict-Transport-Security
+  [23:59:12]     ✓ Content-Security-Policy
+  [23:59:12]     ✗ X-Frame-Options
+  [23:59:12]     ✓ X-Content-Type-Options
+  [23:59:12]     ✓ X-XSS-Protection
+  [23:59:12]     ✓ Referrer-Policy
+  [23:59:12]     ✗ Permissions-Policy
+  [23:59:12]   Security score  : 5/7
+  [23:59:12] Checking SSL/TLS certificate...
+  [23:59:13]   TLS version     : TLSv1.3
+  [23:59:13]   Cipher suite    : TLS_AES_256_GCM_SHA384 (256 bits)
+  [23:59:13]   Common name     : *.yandex.tr
+  [23:59:13]   Issuer          : GlobalSign nv-sa [BE]
+  [23:59:13]   Valid from      : Feb  6 06:58:08 2026 GMT
+  [23:59:13]   Valid until     : Aug  6 20:59:59 2026 GMT
+  [23:59:13]   Days remaining  : 154 days
+  [23:59:13]   Alt names (SAN) : 52 entries
+  [23:59:13]     · *.yandex.tr
+  [23:59:13]     · xn--d1acpjx3f.xn--p1ai
+  [23:59:13]     · *.xn--d1acpjx3f.xn--p1ai
+  [23:59:13]     · yandex.aero
+  [23:59:13]     · *.yandex.aero
+  [23:59:13]     · yandex.jobs
+  [23:59:13]     · *.yandex.jobs
+  [23:59:13]     · yandex.net
+  [23:59:13]     · *.yandex.net
+  [23:59:13]     · yandex.org
+  [23:59:13]     ... and 42 more
+  [23:59:13] Scanning common ports...
+  [23:59:18]      80/tcp  OPEN    HTTP            [HTTP/1.1 301 Moved permanent]
+  [23:59:22]     443/tcp  OPEN    HTTPS         
+  [23:59:37]   Open ports      : 2
+  [23:59:37]   Closed          : 19
+  [23:59:37]   Filtered        : 0
+  [23:59:37] Generating comprehensive security report...
+
+════════════════════════════════════════════════════════════════════════
+  END OF REPORT — webgate by c3less
+════════════════════════════════════════════════════════════════════════

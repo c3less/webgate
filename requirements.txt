@@ -1,0 +1,17 @@
+# webgate — Domain Security Auditor
+# Required (core functionality works without these, but features are limited):
+
+# Full DNS record analysis (A, MX, NS, TXT, CNAME, SOA, AAAA)
+dnspython>=2.3.0
+
+# WHOIS domain registration lookup
+python-whois>=0.8.0
+
+# Enhanced SSL certificate parsing (optional, stdlib ssl used by default)
+pyOpenSSL>=23.0.0
+
+# Windows color support (only needed on Windows)
+colorama>=0.4.6; sys_platform == "win32"
+
+# ─── Install all at once ───────────────────────────────────────────────
+# pip install dnspython python-whois pyOpenSSL

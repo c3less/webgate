@@ -1,0 +1,109 @@
+════════════════════════════════════════════════════════════════════════
+  WEBGATE — DOMAIN SECURITY AUDIT REPORT
+  Created by c3less  │  webgate v1.0.0
+────────────────────────────────────────────────────────────────────────
+  Target    : monitoring.mosreg.ru
+  Date/Time : 2026-03-05 00:06:15
+  Duration  : 58.4s
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────
+  1. DNS RESOLUTION
+────────────────────────────────────────────────────────────────────────
+  IPv4 Address  : 185.120.189.211
+  Reverse DNS   : N/A
+
+────────────────────────────────────────────────────────────────────────
+  2. DNS RECORDS
+────────────────────────────────────────────────────────────────────────
+  A        : 185.120.189.211
+
+────────────────────────────────────────────────────────────────────────
+  3. WHOIS INFORMATION
+────────────────────────────────────────────────────────────────────────
+  Registrar           : RU-CENTER-RU
+  Creation Date       : 1999-06-01 10:11:48+00:00
+  Expiration Date     : 2026-06-30 21:00:00+00:00
+  Name Servers        : ns01.mosreg.ru. 185.120.189.53
+  Org                 : GOSUDARSTVENNOE AVTONOMNOE UChREZhDENIE MOSKOVSKOY
+  Status              : REGISTERED, DELEGATED, VERIFIED
+
+────────────────────────────────────────────────────────────────────────
+  4. HTTP ANALYSIS
+────────────────────────────────────────────────────────────────────────
+  Status Code   : None
+  Protocol      : None
+  Server        : None
+  HTTPS Redir   : No
+  Sec Hdr Score : 0/7
+
+  Security Header Audit:
+    ✗  Strict-Transport-Security
+    ✗  Content-Security-Policy
+    ✗  X-Frame-Options
+    ✗  X-Content-Type-Options
+    ✗  X-XSS-Protection
+    ✗  Referrer-Policy
+    ✗  Permissions-Policy
+
+────────────────────────────────────────────────────────────────────────
+  5. SSL/TLS CERTIFICATE
+────────────────────────────────────────────────────────────────────────
+  SSL not available: Connection timeout
+
+────────────────────────────────────────────────────────────────────────
+  6. PORT SCAN
+────────────────────────────────────────────────────────────────────────
+  Target IP     : 185.120.189.211
+
+  No open ports detected in common port list
+
+────────────────────────────────────────────────────────────────────────
+  7. RISK SUMMARY
+────────────────────────────────────────────────────────────────────────
+  [HIGH    ] No HTTPS/SSL on port 443
+  [HIGH    ] Very poor security headers (0/7)
+  [MEDIUM  ] HTTP to HTTPS redirect not enforced
+
+────────────────────────────────────────────────────────────────────────
+  8. DETAILED SCAN LOG
+────────────────────────────────────────────────────────────────────────
+  [00:05:16] Starting security audit: monitoring.mosreg.ru
+  [00:05:16] ────────────────────────────────────────────────────
+  [00:05:16] Resolving domain to IP address...
+  [00:05:17]   IPv4 Address    : 185.120.189.211
+  [00:05:17]   Reverse DNS     : not available
+  [00:05:17]   Resolved 1 address(es)
+  [00:05:17] Checking DNS records (A, AAAA, MX, NS, TXT, CNAME, SOA)...
+  [00:05:17]   A               : 185.120.189.211
+  [00:05:19] Retrieving WHOIS information...
+  [00:05:20]   Registrar          : RU-CENTER-RU
+  [00:05:20]   Registered         : 1999-06-01 10:11:48+00:00
+  [00:05:20]   Expires            : 2026-06-30 21:00:00+00:00
+  [00:05:20]   Name Servers       : ns01.mosreg.ru. 185.120.189.53
+  [00:05:20]   Organization       : GOSUDARSTVENNOE AVTONOMNOE UChREZhDENIE MOSKOVSKOY OBLASTI "CI
+  [00:05:20]   Domain Status      : REGISTERED, DELEGATED, VERIFIED
+  [00:05:20]   WHOIS lookup failed: can't subtract offset-naive and offset-aware datetimes
+  [00:05:20] Analyzing HTTP headers and security posture...
+  [00:05:30]   HTTPS failed  : <urlopen error timed out>
+  [00:05:40]   HTTP failed  : <urlopen error timed out>
+  [00:05:40]   Security headers audit:
+  [00:05:40]     ✗ Strict-Transport-Security
+  [00:05:40]     ✗ Content-Security-Policy
+  [00:05:40]     ✗ X-Frame-Options
+  [00:05:40]     ✗ X-Content-Type-Options
+  [00:05:40]     ✗ X-XSS-Protection
+  [00:05:40]     ✗ Referrer-Policy
+  [00:05:40]     ✗ Permissions-Policy
+  [00:05:40]   Security score  : 0/7
+  [00:05:40] Checking SSL/TLS certificate...
+  [00:05:50]   SSL connection timed out
+  [00:05:50] Scanning common ports...
+  [00:06:15]   Open ports      : 0
+  [00:06:15]   Closed          : 21
+  [00:06:15]   Filtered        : 0
+  [00:06:15] Generating comprehensive security report...
+
+════════════════════════════════════════════════════════════════════════
+  END OF REPORT — webgate by c3less
+════════════════════════════════════════════════════════════════════════

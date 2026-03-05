@@ -1,0 +1,209 @@
+════════════════════════════════════════════════════════════════════════
+  WEBGATE — DOMAIN SECURITY AUDIT REPORT
+  Created by c3less  │  webgate v1.0.0
+────────────────────────────────────────────────────────────────────────
+  Target    : github.com
+  Date/Time : 2026-03-05 00:01:18
+  Duration  : 26.0s
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────
+  1. DNS RESOLUTION
+────────────────────────────────────────────────────────────────────────
+  IPv4 Address  : 140.82.113.4
+  Reverse DNS   : lb-140-82-113-4-iad.github.com
+
+────────────────────────────────────────────────────────────────────────
+  2. DNS RECORDS
+────────────────────────────────────────────────────────────────────────
+  A        : 140.82.114.3
+  MX       : 1 aspmx.l.google.com.
+  MX       : 10 alt3.aspmx.l.google.com.
+  MX       : 10 alt4.aspmx.l.google.com.
+  MX       : 5 alt1.aspmx.l.google.com.
+  MX       : 5 alt2.aspmx.l.google.com.
+  NS       : dns1.p08.nsone.net.
+  NS       : dns2.p08.nsone.net.
+  NS       : dns3.p08.nsone.net.
+  NS       : dns4.p08.nsone.net.
+  NS       : ns-1283.awsdns-32.org.
+  NS       : ns-1707.awsdns-21.co.uk.
+  NS       : ns-421.awsdns-52.com.
+  NS       : ns-520.awsdns-01.net.
+  TXT      : "MS=6BF03E6AF5CB689E315FB6199603BABF2C88D805"
+  TXT      : "MS=ms44452932"
+  TXT      : "MS=ms58704441"
+  TXT      : "TAILSCALE-xOzoDvFUzZr5YYVCQFuD"
+  TXT      : "adobe-idp-site-verification=b92c9e999aef825edc36e0a3d847d2dba
+  TXT      : "apple-domain-verification=RyQhdzTl6Z6x8ZP4"
+  TXT      : "atlassian-domain-verification=jjgw98AKv2aeoYFxiL/VFaoyPkn3und
+  TXT      : "calendly-site-verification=at0DQARi7IZvJtXQAWhMqpmIzpvoBNF7aa
+  TXT      : "docusign=087098e3-3d46-47b7-9b4e-8a23028154cd"
+  TXT      : "facebook-domain-verification=39xu4jzl7roi7x0n93ldkxjiaarx50"
+  TXT      : "google-site-verification=82Le34Flgtd15ojYhHlGF_6g72muSjamlMVT
+  TXT      : "google-site-verification=UTM-3akMgubp6tQtgEuAkYNYLyYAvpTnnSrD
+  TXT      : "jamf-site-verification=XtaPNIYghF_e_xRDI8CjgQ"
+  TXT      : "krisp-domain-verification=ZlyiK7XLhnaoUQb2hpak1PLY7dFkl1WE"
+  TXT      : "loom-site-verification=f3787154f1154b7880e720a511ea664d"
+  TXT      : "miro-verification=d2e174fdb00c71e0bcf58f8e58c3da2dd80dcfa9"
+  TXT      : "shopify-verification-code=t1YPwcmvnxZyBycaCpk1MPyWoFs72o"
+  TXT      : "stripe-verification=f88ef17321660a01bab1660454192e014defa29ba
+  TXT      : "v=spf1 ip4:192.30.252.0/22 include:_netblocks.google.com incl
+  SOA      : ns-1707.awsdns-21.co.uk. awsdns-hostmaster.amazon.com. 1 7200 
+
+────────────────────────────────────────────────────────────────────────
+  3. WHOIS INFORMATION
+────────────────────────────────────────────────────────────────────────
+  Registrar           : MarkMonitor, Inc.
+  Creation Date       : 2007-10-09 18:20:50+00:00
+  Expiration Date     : 2026-10-09 18:20:50+00:00
+  Updated Date        : 2024-09-07 09:16:32+00:00
+  Name Servers        : DNS1.P08.NSONE.NET
+  Org                 : GitHub, Inc.
+  Country             : US
+  Emails              : abusecomplaints@markmonitor.com
+  Status              : clientDeleteProhibited https://icann.org/epp#clien
+  Dnssec              : unsigned
+
+────────────────────────────────────────────────────────────────────────
+  4. HTTP ANALYSIS
+────────────────────────────────────────────────────────────────────────
+  Status Code   : 200
+  Protocol      : HTTPS
+  Server        : github.com
+  HTTPS Redir   : Yes
+  Technology    : Server: github.com
+  Sec Hdr Score : 6/7
+
+  Security Header Audit:
+    ✓  Strict-Transport-Security
+    ✓  Content-Security-Policy
+    ✓  X-Frame-Options
+    ✓  X-Content-Type-Options
+    ✓  X-XSS-Protection
+    ✓  Referrer-Policy
+    ✗  Permissions-Policy
+
+────────────────────────────────────────────────────────────────────────
+  5. SSL/TLS CERTIFICATE
+────────────────────────────────────────────────────────────────────────
+  TLS Version       : TLSv1.3
+  Cipher Suite      : TLS_AES_128_GCM_SHA256
+  Key Bits          : 128
+  Common Name       : github.com
+  Issuer            : Sectigo Limited
+  Valid From        : Jan  6 00:00:00 2026 GMT
+  Valid Until       : Apr  5 23:59:59 2026 GMT
+  Days Remaining    : 31
+  Wildcard Cert : No
+  Self-Signed   : No
+  SAN Count     : 2
+
+────────────────────────────────────────────────────────────────────────
+  6. PORT SCAN
+────────────────────────────────────────────────────────────────────────
+  Target IP     : 140.82.114.3
+
+  PORT     STATE      SERVICE          BANNER
+  ──────── ────────── ──────────────── ────────────────────────
+  22       OPEN       SSH              SSH-2.0-413c7c5
+  80       OPEN       HTTP             HTTP/1.1 301 Moved Perma
+  443      OPEN       HTTPS            
+
+────────────────────────────────────────────────────────────────────────
+  7. RISK SUMMARY
+────────────────────────────────────────────────────────────────────────
+  [OK] No critical risks identified in this scan
+
+────────────────────────────────────────────────────────────────────────
+  8. DETAILED SCAN LOG
+────────────────────────────────────────────────────────────────────────
+  [00:00:52] Starting security audit: github.com
+  [00:00:52] ────────────────────────────────────────────────────
+  [00:00:52] Resolving domain to IP address...
+  [00:00:52]   IPv4 Address    : 140.82.113.4
+  [00:00:52]   Reverse DNS     : lb-140-82-113-4-iad.github.com
+  [00:00:52]   Resolved 1 address(es)
+  [00:00:52] Checking DNS records (A, AAAA, MX, NS, TXT, CNAME, SOA)...
+  [00:00:52]   A               : 140.82.114.3
+  [00:00:53]   MX              : 1 aspmx.l.google.com.
+  [00:00:53]   MX              : 10 alt3.aspmx.l.google.com.
+  [00:00:53]   MX              : 10 alt4.aspmx.l.google.com.
+  [00:00:53]   MX              : 5 alt1.aspmx.l.google.com.
+  [00:00:53]   MX              : 5 alt2.aspmx.l.google.com.
+  [00:00:53]   NS              : dns1.p08.nsone.net.
+  [00:00:53]   NS              : dns2.p08.nsone.net.
+  [00:00:53]   NS              : dns3.p08.nsone.net.
+  [00:00:53]   NS              : dns4.p08.nsone.net.
+  [00:00:53]   NS              : ns-1283.awsdns-32.org.
+  [00:00:53]   NS              : ns-1707.awsdns-21.co.uk.
+  [00:00:53]   NS              : ns-421.awsdns-52.com.
+  [00:00:53]   NS              : ns-520.awsdns-01.net.
+  [00:00:53]   TXT             : "MS=6BF03E6AF5CB689E315FB6199603BABF2C88D805"
+  [00:00:53]   TXT             : "MS=ms44452932"
+  [00:00:53]   TXT             : "MS=ms58704441"
+  [00:00:53]   TXT             : "TAILSCALE-xOzoDvFUzZr5YYVCQFuD"
+  [00:00:53]   TXT             : "adobe-idp-site-verification=b92c9e999aef825edc36e0a3d847d2dbad5b2fc0e05c7
+  [00:00:53]   TXT             : "apple-domain-verification=RyQhdzTl6Z6x8ZP4"
+  [00:00:53]   TXT             : "atlassian-domain-verification=jjgw98AKv2aeoYFxiL/VFaoyPkn3undEssTRuMg6C/3
+  [00:00:53]   TXT             : "calendly-site-verification=at0DQARi7IZvJtXQAWhMqpmIzpvoBNF7aam5VKKxP"
+  [00:00:53]   TXT             : "docusign=087098e3-3d46-47b7-9b4e-8a23028154cd"
+  [00:00:53]   TXT             : "facebook-domain-verification=39xu4jzl7roi7x0n93ldkxjiaarx50"
+  [00:00:53]   TXT             : "google-site-verification=82Le34Flgtd15ojYhHlGF_6g72muSjamlMVThBOJpks"
+  [00:00:53]   TXT             : "google-site-verification=UTM-3akMgubp6tQtgEuAkYNYLyYAvpTnnSrDMWoDR3o"
+  [00:00:53]   TXT             : "jamf-site-verification=XtaPNIYghF_e_xRDI8CjgQ"
+  [00:00:53]   TXT             : "krisp-domain-verification=ZlyiK7XLhnaoUQb2hpak1PLY7dFkl1WE"
+  [00:00:53]   TXT             : "loom-site-verification=f3787154f1154b7880e720a511ea664d"
+  [00:00:53]   TXT             : "miro-verification=d2e174fdb00c71e0bcf58f8e58c3da2dd80dcfa9"
+  [00:00:53]   TXT             : "shopify-verification-code=t1YPwcmvnxZyBycaCpk1MPyWoFs72o"
+  [00:00:53]   TXT             : "stripe-verification=f88ef17321660a01bab1660454192e014defa29ba7b8de9633c69
+  [00:00:53]   TXT             : "v=spf1 ip4:192.30.252.0/22 include:_netblocks.google.com include:_netbloc
+  [00:00:53]   SOA             : ns-1707.awsdns-21.co.uk. awsdns-hostmaster.amazon.com. 1 7200 900 1209600 
+  [00:00:53] Retrieving WHOIS information...
+  [00:00:55]   Registrar          : MarkMonitor, Inc.
+  [00:00:55]   Registered         : 2007-10-09 18:20:50+00:00
+  [00:00:55]   Expires            : 2026-10-09 18:20:50+00:00
+  [00:00:55]   Last Updated       : 2024-09-07 09:16:32+00:00
+  [00:00:55]   Name Servers       : DNS1.P08.NSONE.NET
+  [00:00:55]   Organization       : GitHub, Inc.
+  [00:00:55]   Country            : US
+  [00:00:55]   Contact            : abusecomplaints@markmonitor.com
+  [00:00:55]   Domain Status      : clientDeleteProhibited https://icann.org/epp#clientDeleteProhi
+  [00:00:55]   DNSSEC             : unsigned
+  [00:00:55]   WHOIS lookup failed: can't subtract offset-naive and offset-aware datetimes
+  [00:00:55] Analyzing HTTP headers and security posture...
+  [00:00:55]   Status          : 200 (HTTPS)
+  [00:00:55]   Server           : github.com
+  [00:00:55]   HTTPS redirect  : enforced ✓
+  [00:00:55]   Security headers audit:
+  [00:00:55]     ✓ Strict-Transport-Security
+  [00:00:55]     ✓ Content-Security-Policy
+  [00:00:55]     ✓ X-Frame-Options
+  [00:00:55]     ✓ X-Content-Type-Options
+  [00:00:55]     ✓ X-XSS-Protection
+  [00:00:55]     ✓ Referrer-Policy
+  [00:00:55]     ✗ Permissions-Policy
+  [00:00:55]   Security score  : 6/7
+  [00:00:55] Checking SSL/TLS certificate...
+  [00:00:55]   TLS version     : TLSv1.3
+  [00:00:55]   Cipher suite    : TLS_AES_128_GCM_SHA256 (128 bits)
+  [00:00:55]   Common name     : github.com
+  [00:00:55]   Issuer          : Sectigo Limited [GB]
+  [00:00:55]   Valid from      : Jan  6 00:00:00 2026 GMT
+  [00:00:55]   Valid until     : Apr  5 23:59:59 2026 GMT
+  [00:00:55]   Days remaining  : 31 days
+  [00:00:55]   Alt names (SAN) : 2 entries
+  [00:00:55]     · github.com
+  [00:00:55]     · www.github.com
+  [00:00:55] Scanning common ports...
+  [00:00:57]      22/tcp  OPEN    SSH             [SSH-2.0-413c7c5]
+  [00:01:00]      80/tcp  OPEN    HTTP            [HTTP/1.1 301 Moved Permanent]
+  [00:01:03]     443/tcp  OPEN    HTTPS         
+  [00:01:18]   Open ports      : 3
+  [00:01:18]   Closed          : 18
+  [00:01:18]   Filtered        : 0
+  [00:01:18] Generating comprehensive security report...
+
+════════════════════════════════════════════════════════════════════════
+  END OF REPORT — webgate by c3less
+════════════════════════════════════════════════════════════════════════

@@ -1,0 +1,147 @@
+════════════════════════════════════════════════════════════════════════
+  WEBGATE — DOMAIN SECURITY AUDIT REPORT
+  Created by c3less  │  webgate v2.0
+────────────────────────────────────────────────────────────────────────
+  Target    : reallyworld.ru
+  Date/Time : 2026-03-05 00:26:23
+  Duration  : 26.8s
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────
+  1. DNS RESOLUTION
+────────────────────────────────────────────────────────────────────────
+  IPv4          : 104.26.6.68
+  IPv4          : 172.67.68.113
+  IPv4          : 104.26.7.68
+  Reverse DNS   : N/A
+
+────────────────────────────────────────────────────────────────────────
+  2. DNS RECORDS
+────────────────────────────────────────────────────────────────────────
+  A        : 172.67.68.113
+  A        : 104.26.7.68
+  A        : 104.26.6.68
+  MX       : 10 mx.reallyworld.ru.
+  NS       : dina.ns.cloudflare.com.
+  NS       : oswald.ns.cloudflare.com.
+  TXT      : "a2300e14ace74e90d93319f34d4a60"
+  TXT      : "enot=60044065"
+  TXT      : "fk-verify=0302c4893bef241c7bbb971b35b7f18c"
+  TXT      : "google-site-verification=UJeiOHqr1aX1_utpKqfFblgt3_AX7K4MG4L4
+  TXT      : "tcpshield-network-verification=MRDNF5EFD2GEITJ4DH4O4DRSPUH2WM
+  TXT      : "v=spf1 include:_spf.mx.realyworld.ru ~all"
+  TXT      : "yandex-verification: ee2c477fec84c989"
+  SOA      : dina.ns.cloudflare.com. dns.cloudflare.com. 2396896850 10000 2
+
+────────────────────────────────────────────────────────────────────────
+  3. WHOIS
+────────────────────────────────────────────────────────────────────────
+  Registrar           : REGRU-RU
+  Creation Date       : 2017-02-26 17:04:46+00:00
+  Expiration Date     : 2027-02-26 17:04:46+00:00
+
+────────────────────────────────────────────────────────────────────────
+  4. HTTP
+────────────────────────────────────────────────────────────────────────
+  Status        : 403
+  Server        : cloudflare
+  HTTPS Redir   : No
+  Sec Score     : 0/7
+
+  Security Headers:
+    ✗  Strict-Transport-Security
+    ✗  Content-Security-Policy
+    ✗  X-Frame-Options
+    ✗  X-Content-Type-Options
+    ✗  X-XSS-Protection
+    ✗  Referrer-Policy
+    ✗  Permissions-Policy
+
+────────────────────────────────────────────────────────────────────────
+  5. SSL/TLS
+────────────────────────────────────────────────────────────────────────
+  TLS           : TLSv1.3
+  Cipher        : TLS_AES_256_GCM_SHA384
+  CN            : reallyworld.ru
+  Issuer        : Google Trust Services
+  Expires       : Apr 12 21:13:31 2026 GMT
+  Days left     : 38
+
+────────────────────────────────────────────────────────────────────────
+  6. PORTS
+────────────────────────────────────────────────────────────────────────
+  Target IP     : 172.67.68.113
+     80/tcp  OPEN  HTTP           HTTP/1.1 400 Bad Req
+    443/tcp  OPEN  HTTPS          
+   8080/tcp  OPEN  HTTP-Alt       HTTP/1.1 400 Bad Req
+   8443/tcp  OPEN  HTTPS-Alt      
+
+────────────────────────────────────────────────────────────────────────
+  7. RISK SUMMARY
+────────────────────────────────────────────────────────────────────────
+  [HIGH    ] Poor security headers (0/7)
+  [MEDIUM  ] HTTP→HTTPS redirect not enforced
+
+────────────────────────────────────────────────────────────────────────
+  8. SCAN LOG
+────────────────────────────────────────────────────────────────────────
+  [00:25:56] Starting audit: reallyworld.ru
+  [00:25:56] ────────────────────────────────────────────────────
+  [00:25:56] Resolving domain to IP address...
+  [00:25:56]   IPv4            : 104.26.6.68
+  [00:25:56]   IPv4            : 172.67.68.113
+  [00:25:56]   IPv4            : 104.26.7.68
+  [00:25:56]   Reverse DNS     : N/A
+  [00:25:56] Checking DNS records (A,AAAA,MX,NS,TXT,CNAME,SOA)...
+  [00:25:57]   A               : 172.67.68.113
+  [00:25:57]   A               : 104.26.7.68
+  [00:25:57]   A               : 104.26.6.68
+  [00:25:57]   MX              : 10 mx.reallyworld.ru.
+  [00:25:57]   NS              : dina.ns.cloudflare.com.
+  [00:25:57]   NS              : oswald.ns.cloudflare.com.
+  [00:25:57]   TXT             : "a2300e14ace74e90d93319f34d4a60"
+  [00:25:57]   TXT             : "enot=60044065"
+  [00:25:57]   TXT             : "fk-verify=0302c4893bef241c7bbb971b35b7f18c"
+  [00:25:57]   TXT             : "google-site-verification=UJeiOHqr1aX1_utpKqfFblgt3_AX7K4MG4L44YuJwlc"
+  [00:25:57]   TXT             : "tcpshield-network-verification=MRDNF5EFD2GEITJ4DH4O4DRSPUH2WMJMFZNAFD5ST3
+  [00:25:57]   TXT             : "v=spf1 include:_spf.mx.realyworld.ru ~all"
+  [00:25:57]   TXT             : "yandex-verification: ee2c477fec84c989"
+  [00:25:57]   SOA             : dina.ns.cloudflare.com. dns.cloudflare.com. 2396896850 10000 2400 604800 1
+  [00:25:57] Retrieving WHOIS information...
+  [00:25:58]   Registrar        : REGRU-RU
+  [00:25:58]   Registered       : 2017-02-26 17:04:46+00:00
+  [00:25:58]   Expires          : 2027-02-26 17:04:46+00:00
+  [00:25:58]   WHOIS failed: can't subtract offset-naive and offset-aware datetimes
+  [00:25:58] Analyzing HTTP headers and security posture...
+  [00:25:59]   Status          : 403 (HTTPS)
+  [00:25:59]   Server           : cloudflare
+  [00:25:59]   Security headers audit:
+  [00:25:59]     ✗ Strict-Transport-Security
+  [00:25:59]     ✗ Content-Security-Policy
+  [00:25:59]     ✗ X-Frame-Options
+  [00:25:59]     ✗ X-Content-Type-Options
+  [00:25:59]     ✗ X-XSS-Protection
+  [00:25:59]     ✗ Referrer-Policy
+  [00:25:59]     ✗ Permissions-Policy
+  [00:25:59]   Security score  : 0/7
+  [00:25:59] Checking SSL/TLS certificate...
+  [00:26:00]   TLS version     : TLSv1.3
+  [00:26:00]   Cipher          : TLS_AES_256_GCM_SHA384 (256 bits)
+  [00:26:00]   Common name     : reallyworld.ru
+  [00:26:00]   Issuer          : Google Trust Services
+  [00:26:00]   Valid until     : Apr 12 21:13:31 2026 GMT
+  [00:26:00]   Days remaining  : 38
+  [00:26:00]   Alt names (SAN) : 2 entries
+  [00:26:00]     · reallyworld.ru
+  [00:26:00]     · *.reallyworld.ru
+  [00:26:00] Scanning common ports...
+  [00:26:05]      80/tcp  OPEN    HTTP            [HTTP/1.1 400 Bad Request Dat]
+  [00:26:08]     443/tcp  OPEN    HTTPS         
+  [00:26:20]    8080/tcp  OPEN    HTTP-Alt        [HTTP/1.1 400 Bad Request Dat]
+  [00:26:21]    8443/tcp  OPEN    HTTPS-Alt     
+  [00:26:23]   Open: 4  Closed: 17  Filtered: 0
+  [00:26:23] Generating security report...
+
+════════════════════════════════════════════════════════════════════════
+  END OF REPORT — webgate by c3less
+════════════════════════════════════════════════════════════════════════
