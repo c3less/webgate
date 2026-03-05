@@ -1,0 +1,22 @@
+# Scan results
+audit_*.txt
+*.json
+!package.json
+
+# Aider
+.aider*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+
+# CVE database (generated on install)
+cve.db
+
+# Settings (user-specific)
+settings.json

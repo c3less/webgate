@@ -1,4 +1,3 @@
-# WebGate — Domain Security Auditor
 
 > **For educational and authorized security testing only.**
 
@@ -8,53 +7,23 @@
 ██║ █╗ ██║█████╗  ██████╔╝██║  ███╗███████║   ██║   █████╗
 ██║███╗██║██╔══╝  ██╔══██╗██║   ██║██╔══██║   ██║   ██╔══╝
 ╚███╔███╔╝███████╗██████╔╝╚██████╔╝██║  ██║   ██║   ███████╗
- ╚══╝╚══╝ ╚══════╝╚═════╝  ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝
+ ╚══╝╚══╝ ╚══════╝╚═════╝  ╚═════╝ ╚═0═╚═0═╝   ╚═0═╝   ╚══════╝
 ```
 
-**WebGate** is an all-in-one domain security auditor with a sleek black-and-white GUI inspired by eDEX-UI and a sqlmap-style interactive CLI. Built for security professionals, students, and CTF participants.
+**WebGate** – это инструмент для быстрой оценки безопасности веб‑домена с графическим интерфейсом, анимациями и базой уязвимостей.
 
----
+## Основные возможности (v2.0)
 
-## Features
+| Фаза | Что делается |
+|------|--------------|
+| **Surface Scan** | DNS, WHOIS, HTTP‑заголовки, SSL/TLS, сканирование 21‑го порта, определение ОС и страны (по IP) |
+| **Deep Scan** | Nmap, sqlmap (light), WPScan – запускаются автоматически или по запросу |
+| **UI/UX** | Анимированные чек‑боксы, плавные переходы темы/языка, динамическая прозрачность, выдвижное окно‑сводка, индикатор оставшегося времени |
+| **CVE‑база** | SQLite‑база с известными уязвимостями для популярных сервисов (nginx, apache, mysql, postgresql) |
+| **Clipboard** | Корректное копирование логов в системный буфер |
+| **Настройки** | Язык (EN/RU), тема (dark/light/midnight/custom), звук, прозрачность, выбор инструментов Deep Scan |
 
-### Standard Scan
-| Module | What it does |
-|---|---|
-| DNS Resolution | IPv4 / IPv6 lookup, reverse DNS |
-| DNS Records | A, AAAA, MX, NS, TXT, CNAME, SOA via dnspython |
-| WHOIS | Registrar, dates, expiry warning, DNSSEC |
-| HTTP Headers | Status, server, redirect chain, 7-header security audit |
-| SSL / TLS | Version, cipher, SANs, expiry countdown, self-signed detection |
-| Port Scan | 21 common ports with banner grabbing |
-| Risk Report | Severity-rated risk summary + full report saved to `.txt` |
-
-### Deep Scan *(requires user authorization confirmation)*
-| Module | What it does |
-|---|---|
-| Web Crawl | Discovers URLs and forms on the target |
-| XSS Probe | Reflection test with basic payloads |
-| SQLi Surface | Error-based SQL injection indicator detection |
-| Dir Enumeration | Common path/file accessibility check |
-| WhatWeb | Technology fingerprinting (if installed) |
-| SQLMap Light | Automated surface SQLi scan, level=1 crawl=2 (if installed) |
-
-### GUI Highlights
-- **Splash screen** with animated logo and typewriter effect
-- **eDEX-UI aesthetic** — pure black/white/grey palette
-- **Resizable window** (min 700×480)
-- **Typing sound** per character (toggleable)
-- **Smooth progress bar** animation
-- **Step indicator** panel with live status
-- **Summary popup** after scan with risk severity
-- **Desktop notification** on scan completion
-- **Language toggle** — English / Russian
-- **Theme toggle** — Dark / Light / Midnight / Custom
-- **Adjustable transparency**
-- **Deep Scan disclaimer** dialog (educational use acknowledgement)
-
----
-
-## Installation
+## Установка (Arch Linux)
 
 ```bash
 git clone https://github.com/c3less/webgate.git
@@ -63,121 +32,65 @@ chmod +x install.sh
 ./install.sh
 ```
 
-Or install Python deps manually:
+Скрипт установит:
+
+* Python 3, pip, git, sqlite, tkinter, alsa‑utils, libnotify
+* Python‑зависимости (`dnspython`, `python-whois`, `pyOpenSSL`, `colorama`)
+* Внешние инструменты: `nmap`, `sqlmap`, `wpscan`
+* Минимальную SQLite‑базу `cve.db` с несколькими CVE‑записями
+
+## Быстрый старт
 
 ```bash
-pip install dnspython python-whois pyOpenSSL
+# CLI‑режим (интерактивный)
+./webgate.py
+
+# GUI
+./webgate.py --gui
+
+# Одноразовый скан
+./webgate.py -d example.com
 ```
 
-For full Deep Scan support:
+### Пример вывода в GUI
+
+*Внизу появляется выдвижное окно со сводкой:*
+
+```
+Server: nginx/1.21.3
+Country: US
+Open ports: 80/http, 443/https, 22/ssh
+CVE:
+  nginx: CVE-2021-23017 – Remote code execution via crafted request
+```
+
+## Настройки
+
+Открыть диалог настроек можно кнопкой ⚙ в правом верхнем углу.  
+Изменения темы, языка и прозрачности применяются **мгновенно** без перезапуска.
+
+## Deep Scan
+
+При нажатии **DEEP SCAN** появляется диалог‑дисклеймер. После согласия можно:
+
+* **Автоматически** выполнить Nmap, sqlmap и WPScan (по умолчанию включено)
+* **Выбрать** отдельные инструменты через чек‑боксы справа от кнопки Deep Scan
+
+## CVE‑база
+
+База хранится в `cve.db` рядом со скриптом. Для обновления:
 
 ```bash
-# Debian/Ubuntu
-sudo apt install python3-tk alsa-utils whatweb libnotify-bin
-
-# Arch
-sudo pacman -S python-tkinter alsa-utils whatweb libnotify
-
-# SQLMap
-pip install sqlmap
+sqlite3 cve.db < update_cve.sql   # ваш собственный скрипт обновления
 ```
 
----
+## Копирование результатов
 
-## Usage
+Выделите любой фрагмент в лог‑окне, нажмите **Ctrl‑C** – текст будет скопирован в буфер обмена.
 
-```bash
-# Interactive CLI shell (sqlmap-style)
-python webgate.py
+## Лицензия
 
-# Graphical interface
-python webgate.py --gui
-
-# Quick one-shot scan
-python webgate.py -d example.com
-
-# GUI pre-loaded with domain
-python webgate.py --gui -d example.com
-```
-
-### CLI shell commands
-```
-webgate › scan example.com   — run full audit
-webgate › gui                — launch graphical interface
-webgate › help               — show usage
-webgate › exit               — quit
-```
-
----
-
-## Screenshots
-
-> *CLI mode — sqlmap-inspired interactive shell*
-
-```
-  ════════════════════════════════════════════════════════════════
-  TARGET   : github.com
-  STARTED  : 2026-03-05 12:00:00
-  ════════════════════════════════════════════════════════════════
-
-  [»] Resolving domain to IP address...
-  [+]   IPv4            : 140.82.121.4
-  [»] Checking SSL/TLS certificate...
-  [+]   TLS version     : TLSv1.3
-  [+]   Cipher          : TLS_AES_128_GCM_SHA256 (128 bits)
-  [✓] SCAN COMPLETE  [18.3s]
-```
-
-> *GUI mode — eDEX-UI B&W aesthetic with animated panels*
-
----
-
-## Report Output
-
-Reports are automatically saved as:
-```
-audit_<domain>_<YYYYMMDD_HHMMSS>.txt
-```
-
-Containing: DNS, WHOIS, HTTP headers, SSL details, open ports, security header audit, risk summary, and full timestamped scan log.
-
----
-
-## Optional Dependencies
-
-| Package | Purpose | Install |
-|---|---|---|
-| `dnspython` | Full DNS record analysis | `pip install dnspython` |
-| `python-whois` | WHOIS lookups | `pip install python-whois` |
-| `pyOpenSSL` | Advanced SSL parsing | `pip install pyOpenSSL` |
-| `whatweb` | Technology fingerprinting | `apt install whatweb` |
-| `sqlmap` | SQLi surface scanning | `pip install sqlmap` |
-
-All are optional — the tool works without them but with reduced functionality.
-
----
-
-## Legal Notice
-
-This tool is provided for **educational purposes** and **authorized security testing only**.
-
-- Only scan domains you **own** or have **written permission** to test
-- Unauthorized scanning may violate computer fraud laws in your jurisdiction
-- The Deep Scan feature includes a mandatory disclaimer that must be acknowledged before use
-- The authors accept **no responsibility** for misuse
-
----
-
-## Requirements
-
-- Python 3.10+
-- `tkinter` (for GUI)
-
----
-
-## License
-
-MIT License — see [LICENSE](LICENSE)
+MIT License – см. файл `LICENSE`.
 
 ---
 
