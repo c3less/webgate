@@ -1,5 +1,5 @@
-# webgate — Domain Security Auditor
-# Required (core functionality works without these, but features are limited):
+# WebGate FW3.7 — Python dependencies
+# Install: pip install -r requirements.txt
 
 # Full DNS record analysis (A, MX, NS, TXT, CNAME, SOA, AAAA)
 dnspython>=2.3.0
@@ -7,11 +7,20 @@ dnspython>=2.3.0
 # WHOIS domain registration lookup
 python-whois>=0.8.0
 
-# Enhanced SSL certificate parsing (optional, stdlib ssl used by default)
+# Enhanced HTTP requests (better than urllib for exploit framework)
+requests>=2.31.0
+
+# SSH operations (backdoor verification, brute force)
+paramiko>=3.3.0
+
+# Network interface detection (agent mode)
+netifaces>=0.11.0
+
+# SSL certificate parsing
 pyOpenSSL>=23.0.0
 
 # Windows color support (only needed on Windows)
 colorama>=0.4.6; sys_platform == "win32"
 
 # ─── Install all at once ───────────────────────────────────────────────
-# pip install dnspython python-whois pyOpenSSL
+# pip install dnspython python-whois requests paramiko netifaces pyOpenSSL
