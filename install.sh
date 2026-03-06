@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════
-#  WebGate v4.0 — Universal Installer
+#  WebGate FW3.7 — Universal Installer
 #  Supports: Arch/Manjaro, Debian/Ubuntu/Kali/Mint, Fedora/RHEL/CentOS,
 #            openSUSE, Void, Alpine, NixOS, Termux (Android), iSH (iOS)
 #  Created by c3less  |  github.com/c3less/webgate
@@ -422,7 +422,7 @@ fi
 echo ""
 if [[ $ERRORS -eq 0 ]]; then
     echo -e "  ${GREEN}╔══════════════════════════════════════════════════╗${RST}"
-    echo -e "  ${GREEN}║  WebGate v4.0 installation complete!   ✓        ║${RST}"
+    echo -e "  ${GREEN}║  WebGate FW3.7 installation complete!   ✓        ║${RST}"
     echo -e "  ${GREEN}╚══════════════════════════════════════════════════╝${RST}"
 else
     echo -e "  ${YELLOW}╔══════════════════════════════════════════════════╗${RST}"

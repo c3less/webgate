@@ -1,97 +1,201 @@
+# WebGate FW3.7 — Domain Security Auditor
 
-> **For educational and authorized security testing only.**
+<p align="center">
+  <img src="https://img.shields.io/badge/version-FW3.7-blue?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/python-3.8%2B-green?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/license-PENTEST_ONLY-red?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS-lightgrey?style=for-the-badge" />
+</p>
 
-```
-██╗    ██╗███████╗██████╗  ██████╗  █████╗ ████████╗███████╗
-██║    ██║██╔════╝██╔══██╗██╔════╝ ██╔══██╗╚══██╔══╝██╔════╝
-██║ █╗ ██║█████╗  ██████╔╝██║  ███╗███████║   ██║   █████╗
-██║███╗██║██╔══╝  ██╔══██╗██║   ██║██╔══██║   ██║   ██╔══╝
-╚███╔███╔╝███████╗██████╔╝╚██████╔╝██║  ██║   ██║   ███████╗
- ╚══╝╚══╝ ╚══════╝╚═════╝  ╚═════╝ ╚═0═╚═0═╝   ╚═0═╝   ╚══════╝
-```
-
-**WebGate** – это инструмент для быстрой оценки безопасности веб‑домена с графическим интерфейсом, анимациями и базой уязвимостей.
-
-## Основные возможности (v2.0)
-
-| Фаза | Что делается |
-|------|--------------|
-| **Surface Scan** | DNS, WHOIS, HTTP‑заголовки, SSL/TLS, сканирование 21‑го порта, определение ОС и страны (по IP) |
-| **Deep Scan** | Nmap, sqlmap (light), WPScan – запускаются автоматически или по запросу |
-| **UI/UX** | Анимированные чек‑боксы, плавные переходы темы/языка, динамическая прозрачность, выдвижное окно‑сводка, индикатор оставшегося времени |
-| **CVE‑база** | SQLite‑база с известными уязвимостями для популярных сервисов (nginx, apache, mysql, postgresql) |
-| **Clipboard** | Корректное копирование логов в системный буфер |
-| **Настройки** | Язык (EN/RU), тема (dark/light/midnight/custom), звук, прозрачность, выбор инструментов Deep Scan |
-
-## Установка (Arch Linux)
-
-```bash
-git clone https://github.com/c3less/webgate.git
-cd webgate
-chmod +x install.sh
-./install.sh
-```
-
-Скрипт установит:
-
-* Python 3, pip, git, sqlite, tkinter, alsa‑utils, libnotify
-* Python‑зависимости (`dnspython`, `python-whois`, `pyOpenSSL`, `colorama`)
-* Внешние инструменты: `nmap`, `sqlmap`, `wpscan`
-* Минимальную SQLite‑базу `cve.db` с несколькими CVE‑записями
-
-## Быстрый старт
-
-```bash
-# CLI‑режим (интерактивный)
-./webgate.py
-
-# GUI
-./webgate.py --gui
-
-# Одноразовый скан
-./webgate.py -d example.com
-```
-
-### Пример вывода в GUI
-
-*Внизу появляется выдвижное окно со сводкой:*
-
-```
-Server: nginx/1.21.3
-Country: US
-Open ports: 80/http, 443/https, 22/ssh
-CVE:
-  nginx: CVE-2021-23017 – Remote code execution via crafted request
-```
-
-## Настройки
-
-Открыть диалог настроек можно кнопкой ⚙ в правом верхнем углу.  
-Изменения темы, языка и прозрачности применяются **мгновенно** без перезапуска.
-
-## Deep Scan
-
-При нажатии **DEEP SCAN** появляется диалог‑дисклеймер. После согласия можно:
-
-* **Автоматически** выполнить Nmap, sqlmap и WPScan (по умолчанию включено)
-* **Выбрать** отдельные инструменты через чек‑боксы справа от кнопки Deep Scan
-
-## CVE‑база
-
-База хранится в `cve.db` рядом со скриптом. Для обновления:
-
-```bash
-sqlite3 cve.db < update_cve.sql   # ваш собственный скрипт обновления
-```
-
-## Копирование результатов
-
-Выделите любой фрагмент в лог‑окне, нажмите **Ctrl‑C** – текст будет скопирован в буфер обмена.
-
-## Лицензия
-
-MIT License – см. файл `LICENSE`.
+> **FOR AUTHORIZED SECURITY TESTING ONLY.**
+> Unauthorized use is a criminal offense under CFAA, CMA, and equivalent laws worldwide.
 
 ---
 
-*Created by c3less — WebGate v2.0*
+## What is WebGate?
+
+WebGate is a professional-grade **domain security auditor and penetration testing framework** for authorized security assessments. It combines passive reconnaissance, vulnerability scanning, and (with written scope agreement) active exploitation into a single beautiful GUI and CLI.
+
+---
+
+## Features
+
+### Surface Scan
+- DNS resolution (A, AAAA, MX, NS, TXT, CNAME, SOA)
+- WHOIS (registrar, expiry, org, country)
+- HTTP headers + security score (CSP, HSTS, X-Frame-Options...)
+- SSL/TLS analysis (version, cipher, expiry, weak ciphers)
+- Port scanning with banner grabbing + CVE matching
+- WAF/CDN detection (Cloudflare, Akamai, Sucuri, AWS, Incapsula...)
+- Subdomain enumeration (80+ prefixes)
+- OS/device/CMS fingerprinting
+
+### Deep Scan (30+ tools)
+| Category | Tools |
+|---|---|
+| Recon | Nmap, Gobuster, Deep Port Scan, Cloudflare Bypass |
+| CMS | WPScan, WP Exploit, WP Plugins, CMSeek, Droopescan, GravityForms |
+| SQL | SQLMap (interactive dump), SQLi Scanner |
+| XSS | XSStrike (simplified output), DOM XSS indicators |
+| RCE | Commix, Joomla RCE, vBulletin RCE |
+| SSL | Full SSL/TLS audit |
+| Web | File upload check, Shell finder, POET enumeration |
+| OSINT | Inurlbr dorks, CUPP wordlist |
+| Brute | Login brute force, SSH default credentials |
+
+### Exploit Framework (Scope Agreement required)
+- SQL Injection — error-based, time-based, UNION, blind
+- XSS — reflected, stored, DOM
+- Command Injection — all major vectors
+- LFI/RFI — path traversal, PHP wrappers
+- File Upload — webshell detection + upload
+- Brute Force — login forms, SSH
+- **SSH Backdoor via RCE CVE** — with `I accept` scope agreement
+  - TOR routing via bridge (obfs4 / webtunnel / snowflake)
+  - Paramiko-based SSH verification
+  - sudo privilege escalation check
+
+### SQLMap Interactive Dump
+When injection is confirmed:
+1. Databases listed in GUI — select target DB
+2. Fetch tables — click to enumerate
+3. Select table → dump → saved to file
+All protected by Scope Agreement.
+
+### CVE Exploit Flow
+After surface scan, if RCE CVE detected:
+1. **Dialog**: "Exploit found: CVE-XXXX — Try SSH access?"
+2. **Scope Agreement**: type exactly `I accept`
+3. **SSH Config**: username, password to create, TOR bridge (optional)
+4. Exploit attempt via CVE-specific vector + SSH verification
+
+### GUI
+- 5 themes: **Dark**, **Mono**, **Light**, **Midnight**, **Hacker** + Custom
+- EN/RU live toggle
+- Logo glitch animation (random interval)
+- Particle burst on scan start
+- Gradient + shimmer progress bar with % overlay
+- Typewriter log output
+- Live step indicators
+
+### Simplified Reports
+Not raw tool noise — clean findings:
+```
+SQL INJECTION:
+  FOUND — SQL Injection detected
+    Vulnerable parameter: GET ?id (MySQL)
+    Payload: 1 AND SLEEP(5)--
+    Databases: information_schema, users_db, shop
+
+XSS:
+  FOUND — XSS vulnerability detected
+    Reflected XSS: param=q
+
+CRITICAL CVEs:
+  CVE-2021-41773 on port 80/HTTP
+    Path traversal + RCE on Apache 2.4.49 — CVSS 9.8
+```
+
+---
+
+## Installation
+
+### Arch Linux
+```bash
+sudo pacman -S python python-pip tk nmap
+pip install -r requirements.txt
+```
+
+### Debian / Ubuntu / Kali
+```bash
+sudo apt install python3 python3-pip python3-tk nmap
+pip3 install -r requirements.txt
+```
+
+### Fedora / RHEL
+```bash
+sudo dnf install python3 python3-pip python3-tkinter nmap
+pip3 install -r requirements.txt
+```
+
+### Termux (Android)
+```bash
+pkg install python nmap
+pip install -r requirements.txt
+```
+
+Or use the auto-installer:
+```bash
+chmod +x install.sh && sudo ./install.sh
+```
+
+---
+
+## Usage
+
+```bash
+# GUI (recommended)
+python webgate.py --gui
+
+# CLI interactive shell
+python webgate.py
+
+# Quick surface scan
+python webgate.py -d example.com
+
+# Deep scan
+python webgate.py deep example.com
+
+# Full scan (all phases)
+python webgate.py full example.com
+
+# Network agent (local network scan)
+python webgate.py agent
+
+# Exploit mode (Scope Agreement required)
+python webgate.py exploit example.com
+
+# Fingerprint device/OS/CMS
+python webgate.py finger example.com
+```
+
+---
+
+## CVE Database
+
+200+ CVEs covering: nginx, Apache, IIS, PHP, MySQL, PostgreSQL, MongoDB, Redis, SSH, FTP, SMB, RDP, WordPress, Joomla, Drupal, Log4j (Log4Shell), Spring (Spring4Shell), Apache Struts (Equifax), Cisco, Fortinet, MikroTik, GitLab, Jenkins, Confluence, Docker, Kubernetes, and more.
+
+---
+
+## Legal
+
+**USE ONLY ON SYSTEMS YOU OWN OR HAVE EXPLICIT WRITTEN AUTHORIZATION TO TEST.**
+
+See [LICENSE](LICENSE) for full terms.
+
+---
+
+## Author
+
+**c3less**
+Telegram: [@c3less](https://t.me/c3less)
+GitHub: [github.com/c3less/webgate](https://github.com/c3less/webgate)
+
+---
+
+## Changelog
+
+### FW3.7
+- NEW: SSH backdoor via RCE CVE (Scope Agreement + typed "I accept")
+- NEW: TOR routing via bridge (obfs4/webtunnel/snowflake)
+- NEW: SQLMap interactive dump — pick DB → table → dump in GUI
+- NEW: CVEExploitOfferDialog — auto-prompt when RCE CVE detected
+- NEW: ScopeAgreementDialog with typed confirmation
+- NEW: Simplified reports — injection Y/N + vulnerable param/payload
+- IMPROVED: SQLMap output shows only key findings (no raw noise)
+- IMPROVED: XSStrike output simplified to injection Y/N + URL
+- IMPROVED: Progress bar with gradient, % overlay, bright pulse edge
+- IMPROVED: Logo glitch animation
+- IMPROVED: Particle burst animation on scan start
+- FIXED: Removed COPY button (was causing GUI freeze/lag on Wayland)
+- FIXED: All version strings updated to FW3.7

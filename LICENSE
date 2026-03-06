@@ -1,0 +1,68 @@
+WebGate FW3.7 — AUTHORIZED USE LICENSE
+=======================================
+
+Copyright (c) 2024-2026 c3less
+GitHub: https://github.com/c3less/webgate
+Telegram: @c3less
+
+TERMS AND CONDITIONS FOR USE
+
+1. PERMITTED USE
+   This software is licensed for use EXCLUSIVELY in the following contexts:
+
+   a) Systems you own or operate and have full administrative control over.
+   b) Systems for which you hold a current, signed Scope Agreement or written
+      authorization document from the system owner (e.g., penetration testing
+      engagement letter, bug bounty program scope, written employer authorization).
+   c) Intentionally vulnerable training environments (HackTheBox, TryHackMe,
+      VulnHub, DVWA, PentesterLab, etc.).
+   d) CTF (Capture The Flag) competition targets within the competition's scope.
+   e) Security research in isolated lab environments.
+
+2. PROHIBITED USE
+   The following uses are STRICTLY PROHIBITED and constitute a breach of this
+   license and likely applicable criminal and civil law:
+
+   a) Scanning, probing, or exploiting any system without explicit written
+      authorization from the system owner.
+   b) Use against government, critical infrastructure, healthcare, or financial
+      systems without documented authorization.
+   c) Use to facilitate unauthorized data access, theft, or destruction.
+   d) Distribution or modification to remove authorization requirements or scope
+      agreement dialogs.
+   e) Use for harassment, stalking, or any malicious purpose.
+
+3. LEGAL NOTICE
+   Unauthorized computer access, interception, and exploitation are criminal
+   offenses under, but not limited to:
+   - Computer Fraud and Abuse Act (CFAA) — United States
+   - Computer Misuse Act (CMA) — United Kingdom
+   - StGB §202a-c — Germany
+   - Criminal Code ss. 342.1, 430 — Canada
+   - Cybercrime Act 2001 — Australia
+   - And equivalent statutes in all other jurisdictions.
+
+   Penalties include imprisonment and substantial fines. YOU bear full legal
+   and ethical responsibility for all actions taken with this software.
+
+4. DISCLAIMER OF WARRANTY
+   THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+   OR IMPLIED. THE AUTHORS ACCEPT NO LIABILITY FOR DAMAGES ARISING FROM USE
+   OF THIS SOFTWARE, AUTHORIZED OR OTHERWISE.
+
+5. INDEMNIFICATION
+   By using this software, you agree to indemnify and hold harmless the author
+   and contributors from any claims, damages, or expenses arising from your
+   use or misuse of this tool.
+
+6. SCOPE AGREEMENT REQUIREMENT
+   The exploit and active attack features of this software require explicit
+   in-application confirmation of authorization before execution. Bypassing
+   these safeguards constitutes a breach of this license.
+
+By using, copying, or distributing this software, you agree to these terms.
+If you do not agree, you must not use this software.
+
+---
+WebGate is a tool for DEFENDERS and authorized PENTESTERS — not attackers.
+Use it to find weaknesses before the bad guys do. Stay legal, stay ethical.
